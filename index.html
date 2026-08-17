@@ -1985,6 +1985,15 @@ function cx(t){
     .replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;')
     .replace(/"/g,'&quot;').replace(/'/g,'&apos;');
 }
+/* HTML back to plain text, so cx() does not escape an entity a second time */
+function ccPlain(h){
+  return String(h==null?'':h).replace(/<[^>]+>/g,'')
+    .replace(/&middot;/g,'·').replace(/&ndash;/g,'–').replace(/&mdash;/g,'—')
+    .replace(/&rsquo;/g,'’').replace(/&lsquo;/g,'‘').replace(/&harr;/g,'↔')
+    .replace(/&rarr;/g,'→').replace(/&nbsp;/g,' ').replace(/&#9733;/g,'★')
+    .replace(/&quot;/g,'"').replace(/&apos;/g,"'")
+    .replace(/&lt;/g,'<').replace(/&gt;/g,'>').replace(/&amp;/g,'&').trim();
+}
 function ccCdata(html){ return '<![CDATA['+String(html||'').replace(/\]\]>/g,']]&gt;')+']]>'; }
 const CCPAGECSS="body{margin:0;padding:22px;font:400 15px/1.5 'Segoe UI',system-ui,-apple-system,"
   +"Arial,sans-serif;color:#14181f;background:#fff}"
@@ -2006,6 +2015,7 @@ const CCPAGECSS="body{margin:0;padding:22px;font:400 15px/1.5 'Segoe UI',system-
   +".ckrow.done{background:#f2f9f5;border-color:#bfe3cd}"
   +".ckrow.done .t{text-decoration:line-through;color:#5b6472}"
   +".ckrow input{width:21px;height:21px;margin:1px 0 0;flex:none;accent-color:#0f766e}"
+  +".boxg{font-size:20px;line-height:1;color:#5b6472;flex:none}.ck ~ .boxg{display:none}"
   +".ckrow .t{font-size:15.5px;font-weight:700;color:#14181f;line-height:1.3}"
   +".ckrow .m{display:block;font-size:13px;font-weight:400;color:#5b6472;margin-top:2px}"
   +".ckrow .kind{display:inline-block;font-size:9.5px;font-weight:800;letter-spacing:.05em;"
@@ -2059,6 +2069,26 @@ function ccStdsOf(w){
   return [...s];
 }
 function ccKindWord(x){ return rdTypeWord(x); }
+/* IXL / KHAN / CK-12 — short and loud, so a Schoology folder reads at a glance */
+function ccSrcWord(x){
+  const s=String(x.src||'').trim();
+  if(/^khan/i.test(s)) return 'KHAN';
+  if(/^ck-?\s*12/i.test(s)) return 'CK-12';
+  if(/^ixl/i.test(s)) return 'IXL';
+  return s.toUpperCase();
+}
+function ccTypeWord(x){
+  const k=String(ccKindWord(x)||'').trim();
+  return k?k.charAt(0).toUpperCase()+k.slice(1):'';
+}
+/* the name Schoology shows: source, then type, then the content itself */
+function ccTitleOf(x){
+  const bits=[], s=ccSrcWord(x), k=ccTypeWord(x);
+  if(s) bits.push(s);
+  if(k && k.toLowerCase()!==s.toLowerCase()) bits.push(k);
+  bits.push((x.num?x.num+' ':'')+(x.title||'untitled'));
+  return bits.join(' · ');
+}
 
 /* ---- one week -> the files and the folder tree ---- */
 function ccWeek(w, files, tree, seq){
@@ -2100,12 +2130,12 @@ function ccWeek(w, files, tree, seq){
     if(r.notes) b+='<h2>Note from your teacher</h2><p>'+cx(r.notes)+'</p>';
     if(!b) b='<p>'+cx(title)+'</p>';
     b+='<p class="note">'+cx(PACE.label)+' &middot; week '+w+'</p>';
-    const f='web/'+id('les'+ri)+'.html';
-    files.push({name:f, data:ccPage('Lesson header: '+title,
+    const f=id('les'+ri)+'.html';   /* flat at the root: one self-contained file, no web/ folder */
+    files.push({name:f, data:ccPage(title,
       (L?(RES.unitword+' '+L.u+(L.ut?' · '+L.ut:'')):'')+' · Week '+w, b)});
-    kids.push({t:'Lesson header: '+title, r:id('les'+ri), type:'webcontent', href:f,
+    kids.push({t:title, r:id('les'+ri), type:'webcontent', href:f,
                d:'Objective, I can statements, vocabulary and the standard for '+title+'.'});
-    ck.push(['read','Lesson header: '+title,'objective, vocabulary and the standard']);
+    ck.push(['read',title,'objective, vocabulary and the standard']);
   });
 
   /* the assignments you marked */
@@ -2129,10 +2159,11 @@ function ccWeek(w, files, tree, seq){
       +'  <gradable points_possible="100">true</gradable>\n'
       +'  <submission_formats><format type="html"/><format type="file"/></submission_formats>\n'
       +'</assignment>'});
-    kids.push({t:a.name, r:id('asg'+ai), type:'assignment_xmlv1p0', href:f,
+    const an=/^assignment\b/i.test(a.name||'')?a.name:('Assignment · '+a.name);
+    kids.push({t:an, r:id('asg'+ai), type:'assignment_xmlv1p0', href:f,
                d:(a.type||'Assignment')+(a.due?' · due '+a.due:'')+' · '
                  +(a.items||[]).length+' item'+((a.items||[]).length===1?'':'s')+'.'});
-    ck.push(['do',a.name,(a.type||'')+(a.due?' · due '+a.due:'')]);
+    ck.push(['do',an,(a.type||'')+(a.due?' · due '+a.due:'')]);
   });
 
   /* everything else on the week, as its own link */
@@ -2140,7 +2171,7 @@ function ccWeek(w, files, tree, seq){
   rows.forEach(r=>(r.res||[]).forEach(x=>{
     if(!x.url || inAsg.has(resKey(x))) return;
     const f=id('lnk'+li)+'/weblink.xml';
-    const t=(x.num?x.num+' — ':'')+x.title;
+    const t=ccTitleOf(x);   /* IXL · Skill · A.1 Create dot plots */
     files.push({name:f, data:'<?xml version="1.0" encoding="UTF-8"?>\n'
       +'<webLink xmlns="http://www.imsglobal.org/xsd/imsccv1p2/imswl_v1p2"'
       +' xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"'
@@ -2152,7 +2183,7 @@ function ccWeek(w, files, tree, seq){
     kids.push({t:t, r:id('lnk'+li), type:'imswl_xmlv1p2', href:f,
                d:(x.src||'')+' · '+ccKindWord(x)+(x.note?' · '+x.note:'')});
     ck.push([ccKindWord(x)==='video'?'watch':(ccKindWord(x)==='skill'?'practice':'open'), t,
-             (x.src||'')+(x.num?' · '+x.num:'')]);
+             (x.note||'')+(x.plan?(x.note?' · ':'')+'also in the '+x.plan:'')]);
     li++;
   }));
 
@@ -2162,14 +2193,15 @@ function ccWeek(w, files, tree, seq){
     +(stds.length?'<p><b>Standards this week:</b> '+cx(stds.join(', '))+'</p>':'')
     +'</div><h2>Work through the week</h2><p id="n"></p><div class="meter"><i id="bar"></i></div>'
     + ck.map(([k,t,m])=>'<label class="ckrow"><input type="checkbox" class="ck"/>'
+        +'<span class="boxg">&#9744;</span>'
         +'<span class="t"><span class="kind">'+cx(k)+'</span>'+cx(t)
         +(m?'<span class="m">'+cx(m)+'</span>':'')+'</span></label>').join('')
     +'<div class="tools"><button type="button" id="reset">Clear the ticks</button>'
     +'<span style="font-size:12.5px;color:#5b6472">Ticks are kept in this browser, for you only.'
     +'</span></div>';
-  const cf='web/'+id('checklist')+'.html';
+  const cf=id('checklist')+'.html';   /* flat at the root, one self-contained file */
   files.push({name:cf, data:ccPage('Week '+w+' checklist',
-    ccWeekInfo(w)[0].replace(/<[^>]+>/g,''), chkBody, 'w'+w+'_'+seq)});
+    ccPlain(ccWeekInfo(w)[0]), chkBody, 'w'+w+'_'+seq)});
   kids.unshift({t:'START HERE — Week '+w+' checklist', r:id('checklist'), type:'webcontent',
                 href:cf, d:'Everything for week '+w+' in order, with tick boxes.'});
 
@@ -2184,12 +2216,15 @@ function ccBuild(fromW,toW){
   for(let w=fromW; w<=toW; w++) if(ccWeek(w, files, tree, ++n)) {}
   if(!tree.length) return null;
   /* a read-me at the root */
-  const rf='web/read_me.html';
+  const rf='read_me.html';
   files.push({name:rf, data:ccPage('About this import',
     PACE.label+' · weeks '+fromW+'–'+toW,
     '<div class="wkinfo"><p>Exported from the Arkansas &harr; Reveal Math map. Each week is a '
     +'folder: the checklist first, then a lesson header page per lesson, your assignments, then '
-    +'the rest of the resources as links.</p>'
+    +'the rest of the resources as links, each named <b>source &middot; type &middot; content</b>.</p>'
+    +'<p>The checklist and the lesson pages are <b>single self-contained files</b> sitting in the '
+    +'week folder &mdash; no sub-folder, nothing to launch. If Schoology asks whether to convert '
+    +'web content, say yes.</p>'
     +'<p><b>Due dates are not part of Common Cartridge</b> — set them after importing.</p>'
     +'<p><b>IXL links here are plain links.</b> For SmartScore passback, rebuild those assignments '
     +'with Add Materials &rarr; IXL Learning (LTI 1.3); the assignment names list the exact skills.'
@@ -4334,6 +4369,15 @@ function cx(t){
     .replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;')
     .replace(/"/g,'&quot;').replace(/'/g,'&apos;');
 }
+/* HTML back to plain text, so cx() does not escape an entity a second time */
+function ccPlain(h){
+  return String(h==null?'':h).replace(/<[^>]+>/g,'')
+    .replace(/&middot;/g,'·').replace(/&ndash;/g,'–').replace(/&mdash;/g,'—')
+    .replace(/&rsquo;/g,'’').replace(/&lsquo;/g,'‘').replace(/&harr;/g,'↔')
+    .replace(/&rarr;/g,'→').replace(/&nbsp;/g,' ').replace(/&#9733;/g,'★')
+    .replace(/&quot;/g,'"').replace(/&apos;/g,"'")
+    .replace(/&lt;/g,'<').replace(/&gt;/g,'>').replace(/&amp;/g,'&').trim();
+}
 function ccCdata(html){ return '<![CDATA['+String(html||'').replace(/\]\]>/g,']]&gt;')+']]>'; }
 const CCPAGECSS="body{margin:0;padding:22px;font:400 15px/1.5 'Segoe UI',system-ui,-apple-system,"
   +"Arial,sans-serif;color:#14181f;background:#fff}"
@@ -4355,6 +4399,7 @@ const CCPAGECSS="body{margin:0;padding:22px;font:400 15px/1.5 'Segoe UI',system-
   +".ckrow.done{background:#f2f9f5;border-color:#bfe3cd}"
   +".ckrow.done .t{text-decoration:line-through;color:#5b6472}"
   +".ckrow input{width:21px;height:21px;margin:1px 0 0;flex:none;accent-color:#0f766e}"
+  +".boxg{font-size:20px;line-height:1;color:#5b6472;flex:none}.ck ~ .boxg{display:none}"
   +".ckrow .t{font-size:15.5px;font-weight:700;color:#14181f;line-height:1.3}"
   +".ckrow .m{display:block;font-size:13px;font-weight:400;color:#5b6472;margin-top:2px}"
   +".ckrow .kind{display:inline-block;font-size:9.5px;font-weight:800;letter-spacing:.05em;"
@@ -4408,6 +4453,26 @@ function ccStdsOf(w){
   return [...s];
 }
 function ccKindWord(x){ return rdTypeWord(x); }
+/* IXL / KHAN / CK-12 — short and loud, so a Schoology folder reads at a glance */
+function ccSrcWord(x){
+  const s=String(x.src||'').trim();
+  if(/^khan/i.test(s)) return 'KHAN';
+  if(/^ck-?\s*12/i.test(s)) return 'CK-12';
+  if(/^ixl/i.test(s)) return 'IXL';
+  return s.toUpperCase();
+}
+function ccTypeWord(x){
+  const k=String(ccKindWord(x)||'').trim();
+  return k?k.charAt(0).toUpperCase()+k.slice(1):'';
+}
+/* the name Schoology shows: source, then type, then the content itself */
+function ccTitleOf(x){
+  const bits=[], s=ccSrcWord(x), k=ccTypeWord(x);
+  if(s) bits.push(s);
+  if(k && k.toLowerCase()!==s.toLowerCase()) bits.push(k);
+  bits.push((x.num?x.num+' ':'')+(x.title||'untitled'));
+  return bits.join(' · ');
+}
 
 /* ---- one week -> the files and the folder tree ---- */
 function ccWeek(w, files, tree, seq){
@@ -4449,12 +4514,12 @@ function ccWeek(w, files, tree, seq){
     if(r.notes) b+='<h2>Note from your teacher</h2><p>'+cx(r.notes)+'</p>';
     if(!b) b='<p>'+cx(title)+'</p>';
     b+='<p class="note">'+cx(PACE.label)+' &middot; week '+w+'</p>';
-    const f='web/'+id('les'+ri)+'.html';
-    files.push({name:f, data:ccPage('Lesson header: '+title,
+    const f=id('les'+ri)+'.html';   /* flat at the root: one self-contained file, no web/ folder */
+    files.push({name:f, data:ccPage(title,
       (L?(RES.unitword+' '+L.u+(L.ut?' · '+L.ut:'')):'')+' · Week '+w, b)});
-    kids.push({t:'Lesson header: '+title, r:id('les'+ri), type:'webcontent', href:f,
+    kids.push({t:title, r:id('les'+ri), type:'webcontent', href:f,
                d:'Objective, I can statements, vocabulary and the standard for '+title+'.'});
-    ck.push(['read','Lesson header: '+title,'objective, vocabulary and the standard']);
+    ck.push(['read',title,'objective, vocabulary and the standard']);
   });
 
   /* the assignments you marked */
@@ -4478,10 +4543,11 @@ function ccWeek(w, files, tree, seq){
       +'  <gradable points_possible="100">true</gradable>\n'
       +'  <submission_formats><format type="html"/><format type="file"/></submission_formats>\n'
       +'</assignment>'});
-    kids.push({t:a.name, r:id('asg'+ai), type:'assignment_xmlv1p0', href:f,
+    const an=/^assignment\b/i.test(a.name||'')?a.name:('Assignment · '+a.name);
+    kids.push({t:an, r:id('asg'+ai), type:'assignment_xmlv1p0', href:f,
                d:(a.type||'Assignment')+(a.due?' · due '+a.due:'')+' · '
                  +(a.items||[]).length+' item'+((a.items||[]).length===1?'':'s')+'.'});
-    ck.push(['do',a.name,(a.type||'')+(a.due?' · due '+a.due:'')]);
+    ck.push(['do',an,(a.type||'')+(a.due?' · due '+a.due:'')]);
   });
 
   /* everything else on the week, as its own link */
@@ -4489,7 +4555,7 @@ function ccWeek(w, files, tree, seq){
   rows.forEach(r=>(r.res||[]).forEach(x=>{
     if(!x.url || inAsg.has(resKey(x))) return;
     const f=id('lnk'+li)+'/weblink.xml';
-    const t=(x.num?x.num+' — ':'')+x.title;
+    const t=ccTitleOf(x);   /* IXL · Skill · A.1 Create dot plots */
     files.push({name:f, data:'<?xml version="1.0" encoding="UTF-8"?>\n'
       +'<webLink xmlns="http://www.imsglobal.org/xsd/imsccv1p2/imswl_v1p2"'
       +' xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"'
@@ -4501,7 +4567,7 @@ function ccWeek(w, files, tree, seq){
     kids.push({t:t, r:id('lnk'+li), type:'imswl_xmlv1p2', href:f,
                d:(x.src||'')+' · '+ccKindWord(x)+(x.note?' · '+x.note:'')});
     ck.push([ccKindWord(x)==='video'?'watch':(ccKindWord(x)==='skill'?'practice':'open'), t,
-             (x.src||'')+(x.num?' · '+x.num:'')]);
+             (x.note||'')+(x.plan?(x.note?' · ':'')+'also in the '+x.plan:'')]);
     li++;
   }));
 
@@ -4511,14 +4577,15 @@ function ccWeek(w, files, tree, seq){
     +(stds.length?'<p><b>Standards this week:</b> '+cx(stds.join(', '))+'</p>':'')
     +'</div><h2>Work through the week</h2><p id="n"></p><div class="meter"><i id="bar"></i></div>'
     + ck.map(([k,t,m])=>'<label class="ckrow"><input type="checkbox" class="ck"/>'
+        +'<span class="boxg">&#9744;</span>'
         +'<span class="t"><span class="kind">'+cx(k)+'</span>'+cx(t)
         +(m?'<span class="m">'+cx(m)+'</span>':'')+'</span></label>').join('')
     +'<div class="tools"><button type="button" id="reset">Clear the ticks</button>'
     +'<span style="font-size:12.5px;color:#5b6472">Ticks are kept in this browser, for you only.'
     +'</span></div>';
-  const cf='web/'+id('checklist')+'.html';
+  const cf=id('checklist')+'.html';   /* flat at the root, one self-contained file */
   files.push({name:cf, data:ccPage('Week '+w+' checklist',
-    ccWeekInfo(w)[0].replace(/<[^>]+>/g,''), chkBody, 'w'+w+'_'+seq)});
+    ccPlain(ccWeekInfo(w)[0]), chkBody, 'w'+w+'_'+seq)});
   kids.unshift({t:'START HERE — Week '+w+' checklist', r:id('checklist'), type:'webcontent',
                 href:cf, d:'Everything for week '+w+' in order, with tick boxes.'});
 
@@ -4533,12 +4600,15 @@ function ccBuild(fromW,toW){
   for(let w=fromW; w<=toW; w++) if(ccWeek(w, files, tree, ++n)) {}
   if(!tree.length) return null;
   /* a read-me at the root */
-  const rf='web/read_me.html';
+  const rf='read_me.html';
   files.push({name:rf, data:ccPage('About this import',
     PACE.label+' · weeks '+fromW+'–'+toW,
     '<div class="wkinfo"><p>Exported from the Arkansas &harr; Reveal Math map. Each week is a '
     +'folder: the checklist first, then a lesson header page per lesson, your assignments, then '
-    +'the rest of the resources as links.</p>'
+    +'the rest of the resources as links, each named <b>source &middot; type &middot; content</b>.</p>'
+    +'<p>The checklist and the lesson pages are <b>single self-contained files</b> sitting in the '
+    +'week folder &mdash; no sub-folder, nothing to launch. If Schoology asks whether to convert '
+    +'web content, say yes.</p>'
     +'<p><b>Due dates are not part of Common Cartridge</b> — set them after importing.</p>'
     +'<p><b>IXL links here are plain links.</b> For SmartScore passback, rebuild those assignments '
     +'with Add Materials &rarr; IXL Learning (LTI 1.3); the assignment names list the exact skills.'
@@ -6682,6 +6752,15 @@ function cx(t){
     .replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;')
     .replace(/"/g,'&quot;').replace(/'/g,'&apos;');
 }
+/* HTML back to plain text, so cx() does not escape an entity a second time */
+function ccPlain(h){
+  return String(h==null?'':h).replace(/<[^>]+>/g,'')
+    .replace(/&middot;/g,'·').replace(/&ndash;/g,'–').replace(/&mdash;/g,'—')
+    .replace(/&rsquo;/g,'’').replace(/&lsquo;/g,'‘').replace(/&harr;/g,'↔')
+    .replace(/&rarr;/g,'→').replace(/&nbsp;/g,' ').replace(/&#9733;/g,'★')
+    .replace(/&quot;/g,'"').replace(/&apos;/g,"'")
+    .replace(/&lt;/g,'<').replace(/&gt;/g,'>').replace(/&amp;/g,'&').trim();
+}
 function ccCdata(html){ return '<![CDATA['+String(html||'').replace(/\]\]>/g,']]&gt;')+']]>'; }
 const CCPAGECSS="body{margin:0;padding:22px;font:400 15px/1.5 'Segoe UI',system-ui,-apple-system,"
   +"Arial,sans-serif;color:#14181f;background:#fff}"
@@ -6703,6 +6782,7 @@ const CCPAGECSS="body{margin:0;padding:22px;font:400 15px/1.5 'Segoe UI',system-
   +".ckrow.done{background:#f2f9f5;border-color:#bfe3cd}"
   +".ckrow.done .t{text-decoration:line-through;color:#5b6472}"
   +".ckrow input{width:21px;height:21px;margin:1px 0 0;flex:none;accent-color:#0f766e}"
+  +".boxg{font-size:20px;line-height:1;color:#5b6472;flex:none}.ck ~ .boxg{display:none}"
   +".ckrow .t{font-size:15.5px;font-weight:700;color:#14181f;line-height:1.3}"
   +".ckrow .m{display:block;font-size:13px;font-weight:400;color:#5b6472;margin-top:2px}"
   +".ckrow .kind{display:inline-block;font-size:9.5px;font-weight:800;letter-spacing:.05em;"
@@ -6756,6 +6836,26 @@ function ccStdsOf(w){
   return [...s];
 }
 function ccKindWord(x){ return rdTypeWord(x); }
+/* IXL / KHAN / CK-12 — short and loud, so a Schoology folder reads at a glance */
+function ccSrcWord(x){
+  const s=String(x.src||'').trim();
+  if(/^khan/i.test(s)) return 'KHAN';
+  if(/^ck-?\s*12/i.test(s)) return 'CK-12';
+  if(/^ixl/i.test(s)) return 'IXL';
+  return s.toUpperCase();
+}
+function ccTypeWord(x){
+  const k=String(ccKindWord(x)||'').trim();
+  return k?k.charAt(0).toUpperCase()+k.slice(1):'';
+}
+/* the name Schoology shows: source, then type, then the content itself */
+function ccTitleOf(x){
+  const bits=[], s=ccSrcWord(x), k=ccTypeWord(x);
+  if(s) bits.push(s);
+  if(k && k.toLowerCase()!==s.toLowerCase()) bits.push(k);
+  bits.push((x.num?x.num+' ':'')+(x.title||'untitled'));
+  return bits.join(' · ');
+}
 
 /* ---- one week -> the files and the folder tree ---- */
 function ccWeek(w, files, tree, seq){
@@ -6797,12 +6897,12 @@ function ccWeek(w, files, tree, seq){
     if(r.notes) b+='<h2>Note from your teacher</h2><p>'+cx(r.notes)+'</p>';
     if(!b) b='<p>'+cx(title)+'</p>';
     b+='<p class="note">'+cx(PACE.label)+' &middot; week '+w+'</p>';
-    const f='web/'+id('les'+ri)+'.html';
-    files.push({name:f, data:ccPage('Lesson header: '+title,
+    const f=id('les'+ri)+'.html';   /* flat at the root: one self-contained file, no web/ folder */
+    files.push({name:f, data:ccPage(title,
       (L?(RES.unitword+' '+L.u+(L.ut?' · '+L.ut:'')):'')+' · Week '+w, b)});
-    kids.push({t:'Lesson header: '+title, r:id('les'+ri), type:'webcontent', href:f,
+    kids.push({t:title, r:id('les'+ri), type:'webcontent', href:f,
                d:'Objective, I can statements, vocabulary and the standard for '+title+'.'});
-    ck.push(['read','Lesson header: '+title,'objective, vocabulary and the standard']);
+    ck.push(['read',title,'objective, vocabulary and the standard']);
   });
 
   /* the assignments you marked */
@@ -6826,10 +6926,11 @@ function ccWeek(w, files, tree, seq){
       +'  <gradable points_possible="100">true</gradable>\n'
       +'  <submission_formats><format type="html"/><format type="file"/></submission_formats>\n'
       +'</assignment>'});
-    kids.push({t:a.name, r:id('asg'+ai), type:'assignment_xmlv1p0', href:f,
+    const an=/^assignment\b/i.test(a.name||'')?a.name:('Assignment · '+a.name);
+    kids.push({t:an, r:id('asg'+ai), type:'assignment_xmlv1p0', href:f,
                d:(a.type||'Assignment')+(a.due?' · due '+a.due:'')+' · '
                  +(a.items||[]).length+' item'+((a.items||[]).length===1?'':'s')+'.'});
-    ck.push(['do',a.name,(a.type||'')+(a.due?' · due '+a.due:'')]);
+    ck.push(['do',an,(a.type||'')+(a.due?' · due '+a.due:'')]);
   });
 
   /* everything else on the week, as its own link */
@@ -6837,7 +6938,7 @@ function ccWeek(w, files, tree, seq){
   rows.forEach(r=>(r.res||[]).forEach(x=>{
     if(!x.url || inAsg.has(resKey(x))) return;
     const f=id('lnk'+li)+'/weblink.xml';
-    const t=(x.num?x.num+' — ':'')+x.title;
+    const t=ccTitleOf(x);   /* IXL · Skill · A.1 Create dot plots */
     files.push({name:f, data:'<?xml version="1.0" encoding="UTF-8"?>\n'
       +'<webLink xmlns="http://www.imsglobal.org/xsd/imsccv1p2/imswl_v1p2"'
       +' xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"'
@@ -6849,7 +6950,7 @@ function ccWeek(w, files, tree, seq){
     kids.push({t:t, r:id('lnk'+li), type:'imswl_xmlv1p2', href:f,
                d:(x.src||'')+' · '+ccKindWord(x)+(x.note?' · '+x.note:'')});
     ck.push([ccKindWord(x)==='video'?'watch':(ccKindWord(x)==='skill'?'practice':'open'), t,
-             (x.src||'')+(x.num?' · '+x.num:'')]);
+             (x.note||'')+(x.plan?(x.note?' · ':'')+'also in the '+x.plan:'')]);
     li++;
   }));
 
@@ -6859,14 +6960,15 @@ function ccWeek(w, files, tree, seq){
     +(stds.length?'<p><b>Standards this week:</b> '+cx(stds.join(', '))+'</p>':'')
     +'</div><h2>Work through the week</h2><p id="n"></p><div class="meter"><i id="bar"></i></div>'
     + ck.map(([k,t,m])=>'<label class="ckrow"><input type="checkbox" class="ck"/>'
+        +'<span class="boxg">&#9744;</span>'
         +'<span class="t"><span class="kind">'+cx(k)+'</span>'+cx(t)
         +(m?'<span class="m">'+cx(m)+'</span>':'')+'</span></label>').join('')
     +'<div class="tools"><button type="button" id="reset">Clear the ticks</button>'
     +'<span style="font-size:12.5px;color:#5b6472">Ticks are kept in this browser, for you only.'
     +'</span></div>';
-  const cf='web/'+id('checklist')+'.html';
+  const cf=id('checklist')+'.html';   /* flat at the root, one self-contained file */
   files.push({name:cf, data:ccPage('Week '+w+' checklist',
-    ccWeekInfo(w)[0].replace(/<[^>]+>/g,''), chkBody, 'w'+w+'_'+seq)});
+    ccPlain(ccWeekInfo(w)[0]), chkBody, 'w'+w+'_'+seq)});
   kids.unshift({t:'START HERE — Week '+w+' checklist', r:id('checklist'), type:'webcontent',
                 href:cf, d:'Everything for week '+w+' in order, with tick boxes.'});
 
@@ -6881,12 +6983,15 @@ function ccBuild(fromW,toW){
   for(let w=fromW; w<=toW; w++) if(ccWeek(w, files, tree, ++n)) {}
   if(!tree.length) return null;
   /* a read-me at the root */
-  const rf='web/read_me.html';
+  const rf='read_me.html';
   files.push({name:rf, data:ccPage('About this import',
     PACE.label+' · weeks '+fromW+'–'+toW,
     '<div class="wkinfo"><p>Exported from the Arkansas &harr; Reveal Math map. Each week is a '
     +'folder: the checklist first, then a lesson header page per lesson, your assignments, then '
-    +'the rest of the resources as links.</p>'
+    +'the rest of the resources as links, each named <b>source &middot; type &middot; content</b>.</p>'
+    +'<p>The checklist and the lesson pages are <b>single self-contained files</b> sitting in the '
+    +'week folder &mdash; no sub-folder, nothing to launch. If Schoology asks whether to convert '
+    +'web content, say yes.</p>'
     +'<p><b>Due dates are not part of Common Cartridge</b> — set them after importing.</p>'
     +'<p><b>IXL links here are plain links.</b> For SmartScore passback, rebuild those assignments '
     +'with Add Materials &rarr; IXL Learning (LTI 1.3); the assignment names list the exact skills.'
@@ -9032,6 +9137,15 @@ function cx(t){
     .replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;')
     .replace(/"/g,'&quot;').replace(/'/g,'&apos;');
 }
+/* HTML back to plain text, so cx() does not escape an entity a second time */
+function ccPlain(h){
+  return String(h==null?'':h).replace(/<[^>]+>/g,'')
+    .replace(/&middot;/g,'·').replace(/&ndash;/g,'–').replace(/&mdash;/g,'—')
+    .replace(/&rsquo;/g,'’').replace(/&lsquo;/g,'‘').replace(/&harr;/g,'↔')
+    .replace(/&rarr;/g,'→').replace(/&nbsp;/g,' ').replace(/&#9733;/g,'★')
+    .replace(/&quot;/g,'"').replace(/&apos;/g,"'")
+    .replace(/&lt;/g,'<').replace(/&gt;/g,'>').replace(/&amp;/g,'&').trim();
+}
 function ccCdata(html){ return '<![CDATA['+String(html||'').replace(/\]\]>/g,']]&gt;')+']]>'; }
 const CCPAGECSS="body{margin:0;padding:22px;font:400 15px/1.5 'Segoe UI',system-ui,-apple-system,"
   +"Arial,sans-serif;color:#14181f;background:#fff}"
@@ -9053,6 +9167,7 @@ const CCPAGECSS="body{margin:0;padding:22px;font:400 15px/1.5 'Segoe UI',system-
   +".ckrow.done{background:#f2f9f5;border-color:#bfe3cd}"
   +".ckrow.done .t{text-decoration:line-through;color:#5b6472}"
   +".ckrow input{width:21px;height:21px;margin:1px 0 0;flex:none;accent-color:#0f766e}"
+  +".boxg{font-size:20px;line-height:1;color:#5b6472;flex:none}.ck ~ .boxg{display:none}"
   +".ckrow .t{font-size:15.5px;font-weight:700;color:#14181f;line-height:1.3}"
   +".ckrow .m{display:block;font-size:13px;font-weight:400;color:#5b6472;margin-top:2px}"
   +".ckrow .kind{display:inline-block;font-size:9.5px;font-weight:800;letter-spacing:.05em;"
@@ -9106,6 +9221,26 @@ function ccStdsOf(w){
   return [...s];
 }
 function ccKindWord(x){ return rdTypeWord(x); }
+/* IXL / KHAN / CK-12 — short and loud, so a Schoology folder reads at a glance */
+function ccSrcWord(x){
+  const s=String(x.src||'').trim();
+  if(/^khan/i.test(s)) return 'KHAN';
+  if(/^ck-?\s*12/i.test(s)) return 'CK-12';
+  if(/^ixl/i.test(s)) return 'IXL';
+  return s.toUpperCase();
+}
+function ccTypeWord(x){
+  const k=String(ccKindWord(x)||'').trim();
+  return k?k.charAt(0).toUpperCase()+k.slice(1):'';
+}
+/* the name Schoology shows: source, then type, then the content itself */
+function ccTitleOf(x){
+  const bits=[], s=ccSrcWord(x), k=ccTypeWord(x);
+  if(s) bits.push(s);
+  if(k && k.toLowerCase()!==s.toLowerCase()) bits.push(k);
+  bits.push((x.num?x.num+' ':'')+(x.title||'untitled'));
+  return bits.join(' · ');
+}
 
 /* ---- one week -> the files and the folder tree ---- */
 function ccWeek(w, files, tree, seq){
@@ -9147,12 +9282,12 @@ function ccWeek(w, files, tree, seq){
     if(r.notes) b+='<h2>Note from your teacher</h2><p>'+cx(r.notes)+'</p>';
     if(!b) b='<p>'+cx(title)+'</p>';
     b+='<p class="note">'+cx(PACE.label)+' &middot; week '+w+'</p>';
-    const f='web/'+id('les'+ri)+'.html';
-    files.push({name:f, data:ccPage('Lesson header: '+title,
+    const f=id('les'+ri)+'.html';   /* flat at the root: one self-contained file, no web/ folder */
+    files.push({name:f, data:ccPage(title,
       (L?(RES.unitword+' '+L.u+(L.ut?' · '+L.ut:'')):'')+' · Week '+w, b)});
-    kids.push({t:'Lesson header: '+title, r:id('les'+ri), type:'webcontent', href:f,
+    kids.push({t:title, r:id('les'+ri), type:'webcontent', href:f,
                d:'Objective, I can statements, vocabulary and the standard for '+title+'.'});
-    ck.push(['read','Lesson header: '+title,'objective, vocabulary and the standard']);
+    ck.push(['read',title,'objective, vocabulary and the standard']);
   });
 
   /* the assignments you marked */
@@ -9176,10 +9311,11 @@ function ccWeek(w, files, tree, seq){
       +'  <gradable points_possible="100">true</gradable>\n'
       +'  <submission_formats><format type="html"/><format type="file"/></submission_formats>\n'
       +'</assignment>'});
-    kids.push({t:a.name, r:id('asg'+ai), type:'assignment_xmlv1p0', href:f,
+    const an=/^assignment\b/i.test(a.name||'')?a.name:('Assignment · '+a.name);
+    kids.push({t:an, r:id('asg'+ai), type:'assignment_xmlv1p0', href:f,
                d:(a.type||'Assignment')+(a.due?' · due '+a.due:'')+' · '
                  +(a.items||[]).length+' item'+((a.items||[]).length===1?'':'s')+'.'});
-    ck.push(['do',a.name,(a.type||'')+(a.due?' · due '+a.due:'')]);
+    ck.push(['do',an,(a.type||'')+(a.due?' · due '+a.due:'')]);
   });
 
   /* everything else on the week, as its own link */
@@ -9187,7 +9323,7 @@ function ccWeek(w, files, tree, seq){
   rows.forEach(r=>(r.res||[]).forEach(x=>{
     if(!x.url || inAsg.has(resKey(x))) return;
     const f=id('lnk'+li)+'/weblink.xml';
-    const t=(x.num?x.num+' — ':'')+x.title;
+    const t=ccTitleOf(x);   /* IXL · Skill · A.1 Create dot plots */
     files.push({name:f, data:'<?xml version="1.0" encoding="UTF-8"?>\n'
       +'<webLink xmlns="http://www.imsglobal.org/xsd/imsccv1p2/imswl_v1p2"'
       +' xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"'
@@ -9199,7 +9335,7 @@ function ccWeek(w, files, tree, seq){
     kids.push({t:t, r:id('lnk'+li), type:'imswl_xmlv1p2', href:f,
                d:(x.src||'')+' · '+ccKindWord(x)+(x.note?' · '+x.note:'')});
     ck.push([ccKindWord(x)==='video'?'watch':(ccKindWord(x)==='skill'?'practice':'open'), t,
-             (x.src||'')+(x.num?' · '+x.num:'')]);
+             (x.note||'')+(x.plan?(x.note?' · ':'')+'also in the '+x.plan:'')]);
     li++;
   }));
 
@@ -9209,14 +9345,15 @@ function ccWeek(w, files, tree, seq){
     +(stds.length?'<p><b>Standards this week:</b> '+cx(stds.join(', '))+'</p>':'')
     +'</div><h2>Work through the week</h2><p id="n"></p><div class="meter"><i id="bar"></i></div>'
     + ck.map(([k,t,m])=>'<label class="ckrow"><input type="checkbox" class="ck"/>'
+        +'<span class="boxg">&#9744;</span>'
         +'<span class="t"><span class="kind">'+cx(k)+'</span>'+cx(t)
         +(m?'<span class="m">'+cx(m)+'</span>':'')+'</span></label>').join('')
     +'<div class="tools"><button type="button" id="reset">Clear the ticks</button>'
     +'<span style="font-size:12.5px;color:#5b6472">Ticks are kept in this browser, for you only.'
     +'</span></div>';
-  const cf='web/'+id('checklist')+'.html';
+  const cf=id('checklist')+'.html';   /* flat at the root, one self-contained file */
   files.push({name:cf, data:ccPage('Week '+w+' checklist',
-    ccWeekInfo(w)[0].replace(/<[^>]+>/g,''), chkBody, 'w'+w+'_'+seq)});
+    ccPlain(ccWeekInfo(w)[0]), chkBody, 'w'+w+'_'+seq)});
   kids.unshift({t:'START HERE — Week '+w+' checklist', r:id('checklist'), type:'webcontent',
                 href:cf, d:'Everything for week '+w+' in order, with tick boxes.'});
 
@@ -9231,12 +9368,15 @@ function ccBuild(fromW,toW){
   for(let w=fromW; w<=toW; w++) if(ccWeek(w, files, tree, ++n)) {}
   if(!tree.length) return null;
   /* a read-me at the root */
-  const rf='web/read_me.html';
+  const rf='read_me.html';
   files.push({name:rf, data:ccPage('About this import',
     PACE.label+' · weeks '+fromW+'–'+toW,
     '<div class="wkinfo"><p>Exported from the Arkansas &harr; Reveal Math map. Each week is a '
     +'folder: the checklist first, then a lesson header page per lesson, your assignments, then '
-    +'the rest of the resources as links.</p>'
+    +'the rest of the resources as links, each named <b>source &middot; type &middot; content</b>.</p>'
+    +'<p>The checklist and the lesson pages are <b>single self-contained files</b> sitting in the '
+    +'week folder &mdash; no sub-folder, nothing to launch. If Schoology asks whether to convert '
+    +'web content, say yes.</p>'
     +'<p><b>Due dates are not part of Common Cartridge</b> — set them after importing.</p>'
     +'<p><b>IXL links here are plain links.</b> For SmartScore passback, rebuild those assignments '
     +'with Add Materials &rarr; IXL Learning (LTI 1.3); the assignment names list the exact skills.'
