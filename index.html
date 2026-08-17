@@ -769,6 +769,29 @@
     background:#12161d;color:#f4f7fb;font-size:12.5px;font-weight:650;padding:9px 15px;
     border-radius:999px;box-shadow:0 16px 40px -18px rgba(0,0,0,.8);max-width:80vw}
   @media print{.dupwarn,.mvpop,.mvtoast{display:none!important}}
+
+  /* --- the pacing mode bar follows you down the page --- */
+  .planpickwrap{position:sticky;top:calc(var(--shellbar, 0px) + var(--sb, 0px));z-index:55;
+    background:var(--plane);margin:0 0 10px;padding:9px 0 8px;
+    display:flex;flex-wrap:wrap;gap:9px;align-items:center;
+    box-shadow:0 8px 16px -14px rgba(0,0,0,.6), 0 1px 0 0 var(--grid)}
+  .planpickwrap .planpick{margin:0}
+  .wkjump{display:inline-flex;gap:6px;align-items:center;margin-left:auto}
+  .wkjump select{background:var(--surface);color:var(--ink);border:1px solid var(--ring);
+    border-radius:8px;padding:6px 9px;font:inherit;font-size:12px;max-width:230px}
+  .wkjump button{background:var(--surface);border:1px solid var(--ring);border-radius:999px;
+    color:var(--ink2);font:inherit;font-size:12px;font-weight:700;padding:6px 12px;cursor:pointer;
+    white-space:nowrap}
+  .wkjump button:hover{border-color:var(--accent);color:var(--accent)}
+  .wkjump button.now{border-color:var(--accent);color:var(--accent)}
+  .wkcard.jumpto{outline:3px solid var(--accent);outline-offset:3px;
+    animation:jumpfade 2.4s ease-out forwards}
+  @keyframes jumpfade{0%{outline-color:var(--accent)}70%{outline-color:var(--accent)}
+    100%{outline-color:transparent}}
+  .wknow{background:var(--accent);color:#fff;font-size:10px;font-weight:800;letter-spacing:.05em;
+    text-transform:uppercase;border-radius:5px;padding:2px 7px;margin-left:2px}
+  @media (max-width:700px){ .wkjump{margin-left:0;width:100%} .wkjump select{flex:1 1 auto} }
+  @media print{.planpickwrap{position:static;box-shadow:none} .wkjump{display:none}}
 </style>
 </head>
 <body>
@@ -1602,9 +1625,10 @@ function districtAuditHTML(A){
 }
 
 function planpickHTML(){
-  return '<div class="planpick" role="group" aria-label="Which pacing">'
+  return '<div class="planpickwrap"><div class="planpick" role="group" aria-label="Which pacing">'
     + PACEMODES.map(m=>'<button type="button" data-plan="'+m[0]+'" aria-pressed="'
-        +(paceMode===m[0])+'">'+m[1]+'</button>').join('') + '</div>';
+        +(paceMode===m[0])+'">'+m[1]+'</button>').join('') + '</div>'
+    + wkJumpHTML() + '</div>';
 }
 function snhue(s){
   const p=String(s||'').split('.')[0].toUpperCase(); let h=0;
@@ -1904,6 +1928,60 @@ function hdOpen(ref){
   });
 }
 
+
+/* ================= where am I in the year ================= */
+function paceWeeks(){ return (PACE.trimmed.plan||[]).map(c=>({w:c.week,start:c.start,end:c.end})); }
+function todayISO(){
+  const d=new Date(), p=n=>(n<10?'0':'')+n;
+  return d.getFullYear()+'-'+p(d.getMonth()+1)+'-'+p(d.getDate());
+}
+/* the week today falls in; failing that the next one to come; failing that the last */
+function currentWeek(){
+  const t=todayISO(), ws=paceWeeks();
+  if(!ws.length) return null;
+  for(const c of ws) if(c.start<=t && t<=c.end) return c.w;
+  for(const c of ws) if(t<c.start) return c.w;
+  return ws[ws.length-1].w;
+}
+function weekIsNow(w){ return currentWeek()===w; }
+function jumpToWeek(w,flash){
+  const card=document.getElementById('pw'+w);
+  if(!card) return false;
+  const bar=document.querySelector('.planpickwrap');
+  const shell=parseInt(getComputedStyle(document.documentElement)
+    .getPropertyValue('--shellbar'),10)||0;
+  const off=shell+(bar?bar.getBoundingClientRect().height:0)+14;
+  const y=card.getBoundingClientRect().top+window.scrollY-off;
+  window.scrollTo({top:Math.max(0,y),behavior:'smooth'});
+  if(flash!==false){
+    document.querySelectorAll('.wkcard.jumpto').forEach(c=>c.classList.remove('jumpto'));
+    card.classList.add('jumpto');
+    setTimeout(()=>card.classList.remove('jumpto'),2600);
+  }
+  return true;
+}
+/* the mode bar sticks under whatever else is already sticking */
+function fitPaceBar(){
+  const sb=document.querySelector('.stickybar');
+  document.documentElement.style.setProperty('--sb',
+    (sb?Math.ceil(sb.getBoundingClientRect().height):0)+'px');
+}
+let PACEJUMPED=false;
+function paceAutoJump(){
+  if(PACEJUMPED) return;
+  const w=currentWeek(); if(w==null) return;
+  if(jumpToWeek(w,true)) PACEJUMPED=true;
+}
+function wkJumpHTML(){
+  const now=currentWeek(), ws=paceWeeks();
+  return '<div class="wkjump">'
+    +'<button type="button" class="now" id="wknowbtn" title="jump to the week we are in">'
+    +(now!=null?'This week · W'+now:'This week')+'</button>'
+    +'<select id="wkjumpsel" aria-label="Jump to a week"><option value="">Jump to a week…</option>'
+    + ws.map(c=>'<option value="'+c.w+'">Week '+c.w+' · '+pdt(c.start)+' – '+pdt(c.end)
+        +(c.w===now?'  ← this week':'')+'</option>').join('')
+    +'</select></div>';
+}
 /* ================= duplicates, and moving resources ================= */
 var ONX = (typeof _on==='function') ? _on : function(t,e,f,o){ t.addEventListener(e,f,o); };
 function resKey(x){ return (x.url||'')+'|'+x.title; }
@@ -2056,8 +2134,8 @@ function mvPop(chip){
 }
 /* ================= assignments ================= */
 const ASGTYPES=['IXL skills','IXL assignment','IXL quiz','Schoology assignment','Schoology quiz',
-  'Reveal assignment','Reveal quiz','Khan assignment','CK-12 assignment','Paper / worksheet',
-  'Project','Test','Other'];
+  'SCORM lesson','Reveal assignment','Reveal quiz','Khan assignment','CK-12 assignment',
+  'Paper / worksheet','Project','Test','Other'];
 let asgSeq=1;
 function asgAll(){ if(!PLAN.asg) PLAN.asg={}; return PLAN.asg; }
 function asgList(w){ const a=asgAll(); if(!a[w]) a[w]=[]; return a[w]; }
@@ -2080,12 +2158,14 @@ function asgAutoType(items){
   if(one && /quiz/i.test(one.src+' '+one.kind+' '+one.title)) return /ixl/i.test(one.src)?'IXL quiz':'Schoology quiz';
   if(one && /schoology/i.test(one.src)) return /quiz/i.test(one.src)?'Schoology quiz':'Schoology assignment';
   if(one && /reveal|mcgraw/i.test(one.src+' '+one.title)) return 'Reveal assignment';
+  if(one && /scorm|interactive lesson/i.test(one.src+' '+one.kind)) return 'SCORM lesson';
   if(one && /khan/i.test(one.src)) return 'Khan assignment';
   const srcs=[...new Set(items.map(r=>String(r.src||'').toLowerCase()))];
   if(srcs.length===1){
     if(/ixl/.test(srcs[0])) return items.every(r=>/skill/i.test(r.kind||''))?'IXL skills':'IXL assignment';
     if(/khan/.test(srcs[0])) return 'Khan assignment';
     if(/ck-?12/.test(srcs[0])) return 'CK-12 assignment';
+    if(/scorm/.test(srcs[0])) return 'SCORM lesson';
     if(/schoology/.test(srcs[0])) return 'Schoology assignment';
     if(/reveal|mcgraw/.test(srcs[0])) return 'Reveal assignment';
   }
@@ -2358,7 +2438,8 @@ function rdKind(r){
   if(/lesson/.test(k)) return 'lessons';
   return 'other';
 }
-const CUSTYPES=['IXL quiz','Schoology assignment','Schoology quiz','Reveal assignment',
+const CUSTYPES=['IXL quiz','Schoology assignment','Schoology quiz',
+  'SCORM package (interactive lesson)','SCORM quiz','Reveal assignment',
   'Reveal quiz','Reveal ALEKS / eAssessment','YouTube video','Schoology page',
   'Google Form','Google Doc / Slides','Quizizz','Kahoot','Desmos activity','Nearpod','Edpuzzle',
   'Khan Academy assignment','Worksheet / PDF','Website','Other'];
@@ -2656,7 +2737,7 @@ function planWeekBodyHTML(w){
   const rows=planRows(w);
   const used=rows.reduce((a,r)=>a+(+r.days||0),0);
   return '<div class="wkhead">'
-   +'<span class="wkno">W'+w+'</span><span class="wkdate">'+pdt(cell.start)+' – '+pdt(cell.end)+'</span>'
+   +'<span class="wkno">W'+w+'</span>'+(weekIsNow(w)?'<span class="wknow">this week</span>':'')+'<span class="wkdate">'+pdt(cell.start)+' – '+pdt(cell.end)+'</span>'
    +'<span class="wkdays">'+cell.schoolDays+' student days'+(cell.noSchoolDays?' · '+cell.noSchoolDays+' off':'')
      +(cell.testingDays?' · '+cell.testingDays+' testing':'')+'</span>'
    +'<span class="daychip '+(used>cell.capacity?'over':(used?'ok':''))+'">'+(Math.round(used*10)/10)+' of '+cell.capacity+' days planned</span>'
@@ -2790,6 +2871,9 @@ _on(document,'click', function(e){
     cbs.forEach(c=>{ c.checked=on; const r=RDLIST[+c.dataset.i];
       if(r){ if(on) RDSEL.set(rdKey(r),r); else RDSEL.delete(rdKey(r)); } });
     t.textContent = on ? 'Unselect all shown' : 'Select all shown'; rdSelBar(); return; }
+  if(t.id==='wknowbtn'){ const w=currentWeek();
+    if(w!=null && !jumpToWeek(w,true)) mvToast('Week '+w+' is filtered out — clear the search first');
+    return; }
   if(t.classList.contains('pdupfix')){
     const card0=t.closest('.pw'); if(card0){ const n=dupClean(+card0.dataset.w);
       mvToast(n?('Removed '+n+' duplicate'+(n===1?'':'s')):'nothing to remove'); }
@@ -2831,6 +2915,9 @@ _on(document,'click', function(e){
 });
 _on(document,'change', function(e){
   const t=e.target;
+  if(t.id==='wkjumpsel'){ const w=+t.value; t.value='';
+    if(w && !jumpToWeek(w,true)) mvToast('Week '+w+' is filtered out — clear the search first');
+    return; }
   if(t.id==='planfile'){ if(t.files&&t.files[0]) planImport(t.files[0]); return; }
   const row=t.closest('.prow'); if(!row) return;
   const w=+row.dataset.w, r=planRow(w,row.dataset.id); if(!r) return;
@@ -2855,6 +2942,7 @@ _on(document,'input', function(e){
     const r=planRow(+row.dataset.w,row.dataset.id); if(r){ r.notes=t.value; planSave(); } }
 });
 _on(document,'keydown', e=>{ if(e.key==='Escape') rdClose(); });
+ONX(window,'resize',fitPaceBar);
 planLoad();
 if(Object.values(PLAN.weeks).some(a=>a && a.length)) paceMode='mine';
 
@@ -2919,7 +3007,7 @@ function render(){
   }
 
   if(view==='pace' && paceMode==='mine'){
-    let html='<div class="card" style="margin-bottom:16px">'+planpickHTML()
+    let html=planpickHTML()+'<div class="card" style="margin-bottom:16px">'
      +'<p class="ev"><strong>Your own week-by-week plan.</strong> Add the '+esc(RES.unitword.toLowerCase())+' and lesson you will teach '
      +'each week, how many days you will give it, a note, and the resources you will assign. Choosing a lesson slides its '
      +'recommended resources up from the bottom &mdash; IXL skills and videos, IXL lessons, CK-12 FlexBook lessons and Khan Academy '
@@ -2953,6 +3041,7 @@ function render(){
         +'" id="pw'+c.week+'" data-w="'+c.week+'">'+planWeekBodyHTML(c.week)+'</div>';
     }
     wrap.innerHTML = html + (n?cards:'<div class="card empty">No week matches those filters.</div>');
+    fitPaceBar(); setTimeout(paceAutoJump,90);
     planSummary(); planStamp();
     const rows=Object.values(PLAN.weeks).flat();
     cnt.textContent = rows.length
@@ -2965,7 +3054,7 @@ function render(){
 
   if(view==='pace'){
     if(paceMode==='district' && !DISTRICT){
-      wrap.innerHTML = '<div class="card" style="margin-bottom:16px">'+planpickHTML()
+      wrap.innerHTML = planpickHTML()+'<div class="card" style="margin-bottom:16px">'
        +'<p class="ev"><strong>District pacing \u2014 Arkansas Online School.</strong> This mode is wired up, but the district '
        +'guide has not been loaded into the file yet. Send the Arkansas Online School pacing guide for this course '
        +'(a PDF, Word or Excel file is fine) and it will sit here beside the other two, week by week, with its own '
@@ -2982,7 +3071,7 @@ function render(){
       [PACE.capacity,'days you can teach new content','var(--accent)'],
       [R.requiredDays,'days this plan needs', fits?'var(--good-ink)':'var(--critical-ink)'],
       ['W'+PACE.atlasWeek,'ATLAS Summative starts','var(--critical-ink)']];
-    let html=`<div class="card" style="margin-bottom:16px">
+    let html=planpickHTML()+`<div class="card" style="margin-bottom:16px">
       <p class="ev"><strong>Where this comes from.</strong> Weeks, no-school days, quarter markers and testing
       windows are read from your corrected <em>school calendar</em> &mdash; 38 teaching weeks plus the three
       break weeks, with each day marked school or no-school and each testing window tagged with the grades it
@@ -2994,7 +3083,6 @@ function render(){
       Summative weeks the named test days (Tue&ndash;Wed) are blocked outright &mdash; <strong>the math test is
       Tuesday 27 April</strong>.</p>
       <div class="pacetiles">${tiles.map(([v,k,c])=>`<div class="tile"><div class="v"${c?` style="color:${c}"`:''}>${v}</div><div class="k">${k}</div></div>`).join('')}</div>
-      ${planpickHTML()}
       <p class="ev">${paceMode==='district'
         ? `<strong>District pacing &mdash; Arkansas Online School.</strong> This is your district&rsquo;s own sequence and day
            counts laid onto this calendar. It needs <strong>${R.requiredDays} days</strong> against
@@ -3054,8 +3142,8 @@ function render(){
       if(q && !wkHit && !its.length) continue;
       n++;
       const cls = w.isAtlasSummative?'atlas':(w.testingDays?'testing':(w.capacity?'':'off'));
-      out+=`<div class="wkcard ${cls}"><div class="wkhead">
-        <span class="wkno">W${w.week}</span>
+      out+=`<div class="wkcard ${cls}" id="pw${w.week}" data-w="${w.week}"><div class="wkhead">
+        <span class="wkno">W${w.week}</span>${weekIsNow(w.week)?'<span class="wknow">this week</span>':''}
         <span class="wkdate">${dt(w.start)} &ndash; ${dt(w.end)}</span>
         <span class="wkdays">${w.schoolDays} student day${w.schoolDays===1?'':'s'}${w.noSchoolDays?` &middot; ${w.noSchoolDays} off`:''}${w.testingDays?` &middot; ${w.testingDays} testing`:''} &middot; ${w.capacity} teachable${w.capNote?` (${esc(w.capNote)})`:''}</span>
         ${w.quarterStart?'<span class="qmark">quarter starts</span>':''}
@@ -3080,6 +3168,7 @@ function render(){
       out+=`</div>`;
     }
     wrap.innerHTML = html + (n?out:'<div class="card empty">Nothing matches those filters.</div>');
+    fitPaceBar(); setTimeout(paceAutoJump,90);
     cnt.textContent = `${R.plan.length} weeks · ${R.requiredDays} days needed of ${PACE.capacity} teachable `
       + `(${PACE.capacityBeforeAtlas} before ATLAS in W${PACE.atlasWeek}) · `
       + `${R.lessonsPlaced} of ${PACE.lessonsTotal} lessons placed`;
@@ -3090,7 +3179,7 @@ function render(){
     const units=[...new Set(RES.les.map(l=>l.unit))].sort((a,b)=>a-b).filter(u=>!df||u===df);
     const M=RES.meta||{};
     const li=(arr,f)=>arr.length?`<ul>${arr.map(f).join('')}</ul>`:'<p class="srcnote">nothing matched</p>';
-    let html=`<div class="card" style="margin-bottom:16px">
+    let html=planpickHTML()+`<div class="card" style="margin-bottom:16px">
       <p class="ev"><strong>How these links were made.</strong>
       <span class="exact">exact</span> Khan links come from Khan Academy&rsquo;s own Arkansas standard mapping &mdash; a direct
       code match. Khan maps <strong>${M.khanExactStandards}</strong> standards that way; where it does not, the closest
@@ -3169,7 +3258,7 @@ function render(){
     const byRef={}; ATLAS.les.forEach(l=>byRef[l.ref]=l);
     const units=[...new Set(ATLAS.les.map(l=>l.unit))].sort((a,b)=>a-b).filter(u=>!df||u===df);
     const risk=ATLAS.keyConcepts.filter(c=>((ATLAS.std||{})[c]||{}).cov!=='full');
-    let html=`<div class="card" style="margin-bottom:16px">
+    let html=planpickHTML()+`<div class="card" style="margin-bottom:16px">
       <div class="atrow">
         <div class="tile"><div class="v">${ATLAS.items}</div><div class="k">operational items</div></div>
         <div class="tile"><div class="v" style="font-size:19px;padding-top:6px">${esc(ATLAS.time)}</div><div class="k">test time</div></div>
@@ -3543,9 +3632,10 @@ function districtAuditHTML(A){
 }
 
 function planpickHTML(){
-  return '<div class="planpick" role="group" aria-label="Which pacing">'
+  return '<div class="planpickwrap"><div class="planpick" role="group" aria-label="Which pacing">'
     + PACEMODES.map(m=>'<button type="button" data-plan="'+m[0]+'" aria-pressed="'
-        +(paceMode===m[0])+'">'+m[1]+'</button>').join('') + '</div>';
+        +(paceMode===m[0])+'">'+m[1]+'</button>').join('') + '</div>'
+    + wkJumpHTML() + '</div>';
 }
 function snhue(s){
   const p=String(s||'').split('.')[0].toUpperCase(); let h=0;
@@ -3845,6 +3935,60 @@ function hdOpen(ref){
   });
 }
 
+
+/* ================= where am I in the year ================= */
+function paceWeeks(){ return (PACE.trimmed.plan||[]).map(c=>({w:c.week,start:c.start,end:c.end})); }
+function todayISO(){
+  const d=new Date(), p=n=>(n<10?'0':'')+n;
+  return d.getFullYear()+'-'+p(d.getMonth()+1)+'-'+p(d.getDate());
+}
+/* the week today falls in; failing that the next one to come; failing that the last */
+function currentWeek(){
+  const t=todayISO(), ws=paceWeeks();
+  if(!ws.length) return null;
+  for(const c of ws) if(c.start<=t && t<=c.end) return c.w;
+  for(const c of ws) if(t<c.start) return c.w;
+  return ws[ws.length-1].w;
+}
+function weekIsNow(w){ return currentWeek()===w; }
+function jumpToWeek(w,flash){
+  const card=document.getElementById('pw'+w);
+  if(!card) return false;
+  const bar=document.querySelector('.planpickwrap');
+  const shell=parseInt(getComputedStyle(document.documentElement)
+    .getPropertyValue('--shellbar'),10)||0;
+  const off=shell+(bar?bar.getBoundingClientRect().height:0)+14;
+  const y=card.getBoundingClientRect().top+window.scrollY-off;
+  window.scrollTo({top:Math.max(0,y),behavior:'smooth'});
+  if(flash!==false){
+    document.querySelectorAll('.wkcard.jumpto').forEach(c=>c.classList.remove('jumpto'));
+    card.classList.add('jumpto');
+    setTimeout(()=>card.classList.remove('jumpto'),2600);
+  }
+  return true;
+}
+/* the mode bar sticks under whatever else is already sticking */
+function fitPaceBar(){
+  const sb=document.querySelector('.stickybar');
+  document.documentElement.style.setProperty('--sb',
+    (sb?Math.ceil(sb.getBoundingClientRect().height):0)+'px');
+}
+let PACEJUMPED=false;
+function paceAutoJump(){
+  if(PACEJUMPED) return;
+  const w=currentWeek(); if(w==null) return;
+  if(jumpToWeek(w,true)) PACEJUMPED=true;
+}
+function wkJumpHTML(){
+  const now=currentWeek(), ws=paceWeeks();
+  return '<div class="wkjump">'
+    +'<button type="button" class="now" id="wknowbtn" title="jump to the week we are in">'
+    +(now!=null?'This week · W'+now:'This week')+'</button>'
+    +'<select id="wkjumpsel" aria-label="Jump to a week"><option value="">Jump to a week…</option>'
+    + ws.map(c=>'<option value="'+c.w+'">Week '+c.w+' · '+pdt(c.start)+' – '+pdt(c.end)
+        +(c.w===now?'  ← this week':'')+'</option>').join('')
+    +'</select></div>';
+}
 /* ================= duplicates, and moving resources ================= */
 var ONX = (typeof _on==='function') ? _on : function(t,e,f,o){ t.addEventListener(e,f,o); };
 function resKey(x){ return (x.url||'')+'|'+x.title; }
@@ -3997,8 +4141,8 @@ function mvPop(chip){
 }
 /* ================= assignments ================= */
 const ASGTYPES=['IXL skills','IXL assignment','IXL quiz','Schoology assignment','Schoology quiz',
-  'Reveal assignment','Reveal quiz','Khan assignment','CK-12 assignment','Paper / worksheet',
-  'Project','Test','Other'];
+  'SCORM lesson','Reveal assignment','Reveal quiz','Khan assignment','CK-12 assignment',
+  'Paper / worksheet','Project','Test','Other'];
 let asgSeq=1;
 function asgAll(){ if(!PLAN.asg) PLAN.asg={}; return PLAN.asg; }
 function asgList(w){ const a=asgAll(); if(!a[w]) a[w]=[]; return a[w]; }
@@ -4021,12 +4165,14 @@ function asgAutoType(items){
   if(one && /quiz/i.test(one.src+' '+one.kind+' '+one.title)) return /ixl/i.test(one.src)?'IXL quiz':'Schoology quiz';
   if(one && /schoology/i.test(one.src)) return /quiz/i.test(one.src)?'Schoology quiz':'Schoology assignment';
   if(one && /reveal|mcgraw/i.test(one.src+' '+one.title)) return 'Reveal assignment';
+  if(one && /scorm|interactive lesson/i.test(one.src+' '+one.kind)) return 'SCORM lesson';
   if(one && /khan/i.test(one.src)) return 'Khan assignment';
   const srcs=[...new Set(items.map(r=>String(r.src||'').toLowerCase()))];
   if(srcs.length===1){
     if(/ixl/.test(srcs[0])) return items.every(r=>/skill/i.test(r.kind||''))?'IXL skills':'IXL assignment';
     if(/khan/.test(srcs[0])) return 'Khan assignment';
     if(/ck-?12/.test(srcs[0])) return 'CK-12 assignment';
+    if(/scorm/.test(srcs[0])) return 'SCORM lesson';
     if(/schoology/.test(srcs[0])) return 'Schoology assignment';
     if(/reveal|mcgraw/.test(srcs[0])) return 'Reveal assignment';
   }
@@ -4299,7 +4445,8 @@ function rdKind(r){
   if(/lesson/.test(k)) return 'lessons';
   return 'other';
 }
-const CUSTYPES=['IXL quiz','Schoology assignment','Schoology quiz','Reveal assignment',
+const CUSTYPES=['IXL quiz','Schoology assignment','Schoology quiz',
+  'SCORM package (interactive lesson)','SCORM quiz','Reveal assignment',
   'Reveal quiz','Reveal ALEKS / eAssessment','YouTube video','Schoology page',
   'Google Form','Google Doc / Slides','Quizizz','Kahoot','Desmos activity','Nearpod','Edpuzzle',
   'Khan Academy assignment','Worksheet / PDF','Website','Other'];
@@ -4597,7 +4744,7 @@ function planWeekBodyHTML(w){
   const rows=planRows(w);
   const used=rows.reduce((a,r)=>a+(+r.days||0),0);
   return '<div class="wkhead">'
-   +'<span class="wkno">W'+w+'</span><span class="wkdate">'+pdt(cell.start)+' – '+pdt(cell.end)+'</span>'
+   +'<span class="wkno">W'+w+'</span>'+(weekIsNow(w)?'<span class="wknow">this week</span>':'')+'<span class="wkdate">'+pdt(cell.start)+' – '+pdt(cell.end)+'</span>'
    +'<span class="wkdays">'+cell.schoolDays+' student days'+(cell.noSchoolDays?' · '+cell.noSchoolDays+' off':'')
      +(cell.testingDays?' · '+cell.testingDays+' testing':'')+'</span>'
    +'<span class="daychip '+(used>cell.capacity?'over':(used?'ok':''))+'">'+(Math.round(used*10)/10)+' of '+cell.capacity+' days planned</span>'
@@ -4731,6 +4878,9 @@ _on(document,'click', function(e){
     cbs.forEach(c=>{ c.checked=on; const r=RDLIST[+c.dataset.i];
       if(r){ if(on) RDSEL.set(rdKey(r),r); else RDSEL.delete(rdKey(r)); } });
     t.textContent = on ? 'Unselect all shown' : 'Select all shown'; rdSelBar(); return; }
+  if(t.id==='wknowbtn'){ const w=currentWeek();
+    if(w!=null && !jumpToWeek(w,true)) mvToast('Week '+w+' is filtered out — clear the search first');
+    return; }
   if(t.classList.contains('pdupfix')){
     const card0=t.closest('.pw'); if(card0){ const n=dupClean(+card0.dataset.w);
       mvToast(n?('Removed '+n+' duplicate'+(n===1?'':'s')):'nothing to remove'); }
@@ -4772,6 +4922,9 @@ _on(document,'click', function(e){
 });
 _on(document,'change', function(e){
   const t=e.target;
+  if(t.id==='wkjumpsel'){ const w=+t.value; t.value='';
+    if(w && !jumpToWeek(w,true)) mvToast('Week '+w+' is filtered out — clear the search first');
+    return; }
   if(t.id==='planfile'){ if(t.files&&t.files[0]) planImport(t.files[0]); return; }
   const row=t.closest('.prow'); if(!row) return;
   const w=+row.dataset.w, r=planRow(w,row.dataset.id); if(!r) return;
@@ -4860,7 +5013,7 @@ function render(){
   }
 
   if(view==='pace' && paceMode==='mine'){
-    let html='<div class="card" style="margin-bottom:16px">'+planpickHTML()
+    let html=planpickHTML()+'<div class="card" style="margin-bottom:16px">'
      +'<p class="ev"><strong>Your own week-by-week plan.</strong> Add the '+esc(RES.unitword.toLowerCase())+' and lesson you will teach '
      +'each week, how many days you will give it, a note, and the resources you will assign. Choosing a lesson slides its '
      +'recommended resources up from the bottom &mdash; IXL skills and videos, IXL lessons, CK-12 FlexBook lessons and Khan Academy '
@@ -4894,6 +5047,7 @@ function render(){
         +'" id="pw'+c.week+'" data-w="'+c.week+'">'+planWeekBodyHTML(c.week)+'</div>';
     }
     wrap.innerHTML = html + (n?cards:'<div class="card empty">No week matches those filters.</div>');
+    fitPaceBar(); setTimeout(paceAutoJump,90);
     planSummary(); planStamp();
     const rows=Object.values(PLAN.weeks).flat();
     cnt.textContent = rows.length
@@ -4906,7 +5060,7 @@ function render(){
 
   if(view==='pace'){
     if(paceMode==='district' && !DISTRICT){
-      wrap.innerHTML = '<div class="card" style="margin-bottom:16px">'+planpickHTML()
+      wrap.innerHTML = planpickHTML()+'<div class="card" style="margin-bottom:16px">'
        +'<p class="ev"><strong>District pacing \u2014 Arkansas Online School.</strong> This mode is wired up, but the district '
        +'guide has not been loaded into the file yet. Send the Arkansas Online School pacing guide for this course '
        +'(a PDF, Word or Excel file is fine) and it will sit here beside the other two, week by week, with its own '
@@ -4923,7 +5077,7 @@ function render(){
       [PACE.capacity,'days you can teach new content','var(--accent)'],
       [R.requiredDays,'days this plan needs', fits?'var(--good-ink)':'var(--critical-ink)'],
       ['W'+PACE.atlasWeek,'ATLAS Summative starts','var(--critical-ink)']];
-    let html=`<div class="card" style="margin-bottom:16px">
+    let html=planpickHTML()+`<div class="card" style="margin-bottom:16px">
       <p class="ev"><strong>Where this comes from.</strong> Weeks, no-school days, quarter markers and testing
       windows are read from your corrected <em>school calendar</em> &mdash; 38 teaching weeks plus the three
       break weeks, with each day marked school or no-school and each testing window tagged with the grades it
@@ -4935,7 +5089,6 @@ function render(){
       Summative weeks the named test days (Tue&ndash;Wed) are blocked outright &mdash; <strong>the math test is
       Tuesday 27 April</strong>.</p>
       <div class="pacetiles">${tiles.map(([v,k,c])=>`<div class="tile"><div class="v"${c?` style="color:${c}"`:''}>${v}</div><div class="k">${k}</div></div>`).join('')}</div>
-      ${planpickHTML()}
       <p class="ev">${paceMode==='district'
         ? `<strong>District pacing &mdash; Arkansas Online School.</strong> This is your district&rsquo;s own sequence and day
            counts laid onto this calendar. It needs <strong>${R.requiredDays} days</strong> against
@@ -4995,8 +5148,8 @@ function render(){
       if(q && !wkHit && !its.length) continue;
       n++;
       const cls = w.isAtlasSummative?'atlas':(w.testingDays?'testing':(w.capacity?'':'off'));
-      out+=`<div class="wkcard ${cls}"><div class="wkhead">
-        <span class="wkno">W${w.week}</span>
+      out+=`<div class="wkcard ${cls}" id="pw${w.week}" data-w="${w.week}"><div class="wkhead">
+        <span class="wkno">W${w.week}</span>${weekIsNow(w.week)?'<span class="wknow">this week</span>':''}
         <span class="wkdate">${dt(w.start)} &ndash; ${dt(w.end)}</span>
         <span class="wkdays">${w.schoolDays} student day${w.schoolDays===1?'':'s'}${w.noSchoolDays?` &middot; ${w.noSchoolDays} off`:''}${w.testingDays?` &middot; ${w.testingDays} testing`:''} &middot; ${w.capacity} teachable${w.capNote?` (${esc(w.capNote)})`:''}</span>
         ${w.quarterStart?'<span class="qmark">quarter starts</span>':''}
@@ -5021,6 +5174,7 @@ function render(){
       out+=`</div>`;
     }
     wrap.innerHTML = html + (n?out:'<div class="card empty">Nothing matches those filters.</div>');
+    fitPaceBar(); setTimeout(paceAutoJump,90);
     cnt.textContent = `${R.plan.length} weeks · ${R.requiredDays} days needed of ${PACE.capacity} teachable `
       + `(${PACE.capacityBeforeAtlas} before ATLAS in W${PACE.atlasWeek}) · `
       + `${R.lessonsPlaced} of ${PACE.lessonsTotal} lessons placed`;
@@ -5031,7 +5185,7 @@ function render(){
     const units=[...new Set(RES.les.map(l=>l.unit))].sort((a,b)=>a-b).filter(u=>!df||u===df);
     const M=RES.meta||{};
     const li=(arr,f)=>arr.length?`<ul>${arr.map(f).join('')}</ul>`:'<p class="srcnote">nothing matched</p>';
-    let html=`<div class="card" style="margin-bottom:16px">
+    let html=planpickHTML()+`<div class="card" style="margin-bottom:16px">
       <p class="ev"><strong>How these links were made.</strong>
       <span class="exact">exact</span> Khan links come from Khan Academy&rsquo;s own Arkansas standard mapping &mdash; a direct
       code match. Khan maps <strong>${M.khanExactStandards}</strong> standards that way; where it does not, the closest
@@ -5110,7 +5264,7 @@ function render(){
     const byRef={}; ATLAS.les.forEach(l=>byRef[l.ref]=l);
     const units=[...new Set(ATLAS.les.map(l=>l.unit))].sort((a,b)=>a-b).filter(u=>!df||u===df);
     const risk=ATLAS.keyConcepts.filter(c=>((ATLAS.std||{})[c]||{}).cov!=='full');
-    let html=`<div class="card" style="margin-bottom:16px">
+    let html=planpickHTML()+`<div class="card" style="margin-bottom:16px">
       <div class="atrow">
         <div class="tile"><div class="v">${ATLAS.items}</div><div class="k">operational items</div></div>
         <div class="tile"><div class="v" style="font-size:19px;padding-top:6px">${esc(ATLAS.time)}</div><div class="k">test time</div></div>
@@ -5484,9 +5638,10 @@ function districtAuditHTML(A){
 }
 
 function planpickHTML(){
-  return '<div class="planpick" role="group" aria-label="Which pacing">'
+  return '<div class="planpickwrap"><div class="planpick" role="group" aria-label="Which pacing">'
     + PACEMODES.map(m=>'<button type="button" data-plan="'+m[0]+'" aria-pressed="'
-        +(paceMode===m[0])+'">'+m[1]+'</button>').join('') + '</div>';
+        +(paceMode===m[0])+'">'+m[1]+'</button>').join('') + '</div>'
+    + wkJumpHTML() + '</div>';
 }
 function snhue(s){
   const p=String(s||'').split('.')[0].toUpperCase(); let h=0;
@@ -5786,6 +5941,60 @@ function hdOpen(ref){
   });
 }
 
+
+/* ================= where am I in the year ================= */
+function paceWeeks(){ return (PACE.trimmed.plan||[]).map(c=>({w:c.week,start:c.start,end:c.end})); }
+function todayISO(){
+  const d=new Date(), p=n=>(n<10?'0':'')+n;
+  return d.getFullYear()+'-'+p(d.getMonth()+1)+'-'+p(d.getDate());
+}
+/* the week today falls in; failing that the next one to come; failing that the last */
+function currentWeek(){
+  const t=todayISO(), ws=paceWeeks();
+  if(!ws.length) return null;
+  for(const c of ws) if(c.start<=t && t<=c.end) return c.w;
+  for(const c of ws) if(t<c.start) return c.w;
+  return ws[ws.length-1].w;
+}
+function weekIsNow(w){ return currentWeek()===w; }
+function jumpToWeek(w,flash){
+  const card=document.getElementById('pw'+w);
+  if(!card) return false;
+  const bar=document.querySelector('.planpickwrap');
+  const shell=parseInt(getComputedStyle(document.documentElement)
+    .getPropertyValue('--shellbar'),10)||0;
+  const off=shell+(bar?bar.getBoundingClientRect().height:0)+14;
+  const y=card.getBoundingClientRect().top+window.scrollY-off;
+  window.scrollTo({top:Math.max(0,y),behavior:'smooth'});
+  if(flash!==false){
+    document.querySelectorAll('.wkcard.jumpto').forEach(c=>c.classList.remove('jumpto'));
+    card.classList.add('jumpto');
+    setTimeout(()=>card.classList.remove('jumpto'),2600);
+  }
+  return true;
+}
+/* the mode bar sticks under whatever else is already sticking */
+function fitPaceBar(){
+  const sb=document.querySelector('.stickybar');
+  document.documentElement.style.setProperty('--sb',
+    (sb?Math.ceil(sb.getBoundingClientRect().height):0)+'px');
+}
+let PACEJUMPED=false;
+function paceAutoJump(){
+  if(PACEJUMPED) return;
+  const w=currentWeek(); if(w==null) return;
+  if(jumpToWeek(w,true)) PACEJUMPED=true;
+}
+function wkJumpHTML(){
+  const now=currentWeek(), ws=paceWeeks();
+  return '<div class="wkjump">'
+    +'<button type="button" class="now" id="wknowbtn" title="jump to the week we are in">'
+    +(now!=null?'This week · W'+now:'This week')+'</button>'
+    +'<select id="wkjumpsel" aria-label="Jump to a week"><option value="">Jump to a week…</option>'
+    + ws.map(c=>'<option value="'+c.w+'">Week '+c.w+' · '+pdt(c.start)+' – '+pdt(c.end)
+        +(c.w===now?'  ← this week':'')+'</option>').join('')
+    +'</select></div>';
+}
 /* ================= duplicates, and moving resources ================= */
 var ONX = (typeof _on==='function') ? _on : function(t,e,f,o){ t.addEventListener(e,f,o); };
 function resKey(x){ return (x.url||'')+'|'+x.title; }
@@ -5938,8 +6147,8 @@ function mvPop(chip){
 }
 /* ================= assignments ================= */
 const ASGTYPES=['IXL skills','IXL assignment','IXL quiz','Schoology assignment','Schoology quiz',
-  'Reveal assignment','Reveal quiz','Khan assignment','CK-12 assignment','Paper / worksheet',
-  'Project','Test','Other'];
+  'SCORM lesson','Reveal assignment','Reveal quiz','Khan assignment','CK-12 assignment',
+  'Paper / worksheet','Project','Test','Other'];
 let asgSeq=1;
 function asgAll(){ if(!PLAN.asg) PLAN.asg={}; return PLAN.asg; }
 function asgList(w){ const a=asgAll(); if(!a[w]) a[w]=[]; return a[w]; }
@@ -5962,12 +6171,14 @@ function asgAutoType(items){
   if(one && /quiz/i.test(one.src+' '+one.kind+' '+one.title)) return /ixl/i.test(one.src)?'IXL quiz':'Schoology quiz';
   if(one && /schoology/i.test(one.src)) return /quiz/i.test(one.src)?'Schoology quiz':'Schoology assignment';
   if(one && /reveal|mcgraw/i.test(one.src+' '+one.title)) return 'Reveal assignment';
+  if(one && /scorm|interactive lesson/i.test(one.src+' '+one.kind)) return 'SCORM lesson';
   if(one && /khan/i.test(one.src)) return 'Khan assignment';
   const srcs=[...new Set(items.map(r=>String(r.src||'').toLowerCase()))];
   if(srcs.length===1){
     if(/ixl/.test(srcs[0])) return items.every(r=>/skill/i.test(r.kind||''))?'IXL skills':'IXL assignment';
     if(/khan/.test(srcs[0])) return 'Khan assignment';
     if(/ck-?12/.test(srcs[0])) return 'CK-12 assignment';
+    if(/scorm/.test(srcs[0])) return 'SCORM lesson';
     if(/schoology/.test(srcs[0])) return 'Schoology assignment';
     if(/reveal|mcgraw/.test(srcs[0])) return 'Reveal assignment';
   }
@@ -6240,7 +6451,8 @@ function rdKind(r){
   if(/lesson/.test(k)) return 'lessons';
   return 'other';
 }
-const CUSTYPES=['IXL quiz','Schoology assignment','Schoology quiz','Reveal assignment',
+const CUSTYPES=['IXL quiz','Schoology assignment','Schoology quiz',
+  'SCORM package (interactive lesson)','SCORM quiz','Reveal assignment',
   'Reveal quiz','Reveal ALEKS / eAssessment','YouTube video','Schoology page',
   'Google Form','Google Doc / Slides','Quizizz','Kahoot','Desmos activity','Nearpod','Edpuzzle',
   'Khan Academy assignment','Worksheet / PDF','Website','Other'];
@@ -6538,7 +6750,7 @@ function planWeekBodyHTML(w){
   const rows=planRows(w);
   const used=rows.reduce((a,r)=>a+(+r.days||0),0);
   return '<div class="wkhead">'
-   +'<span class="wkno">W'+w+'</span><span class="wkdate">'+pdt(cell.start)+' – '+pdt(cell.end)+'</span>'
+   +'<span class="wkno">W'+w+'</span>'+(weekIsNow(w)?'<span class="wknow">this week</span>':'')+'<span class="wkdate">'+pdt(cell.start)+' – '+pdt(cell.end)+'</span>'
    +'<span class="wkdays">'+cell.schoolDays+' student days'+(cell.noSchoolDays?' · '+cell.noSchoolDays+' off':'')
      +(cell.testingDays?' · '+cell.testingDays+' testing':'')+'</span>'
    +'<span class="daychip '+(used>cell.capacity?'over':(used?'ok':''))+'">'+(Math.round(used*10)/10)+' of '+cell.capacity+' days planned</span>'
@@ -6672,6 +6884,9 @@ _on(document,'click', function(e){
     cbs.forEach(c=>{ c.checked=on; const r=RDLIST[+c.dataset.i];
       if(r){ if(on) RDSEL.set(rdKey(r),r); else RDSEL.delete(rdKey(r)); } });
     t.textContent = on ? 'Unselect all shown' : 'Select all shown'; rdSelBar(); return; }
+  if(t.id==='wknowbtn'){ const w=currentWeek();
+    if(w!=null && !jumpToWeek(w,true)) mvToast('Week '+w+' is filtered out — clear the search first');
+    return; }
   if(t.classList.contains('pdupfix')){
     const card0=t.closest('.pw'); if(card0){ const n=dupClean(+card0.dataset.w);
       mvToast(n?('Removed '+n+' duplicate'+(n===1?'':'s')):'nothing to remove'); }
@@ -6713,6 +6928,9 @@ _on(document,'click', function(e){
 });
 _on(document,'change', function(e){
   const t=e.target;
+  if(t.id==='wkjumpsel'){ const w=+t.value; t.value='';
+    if(w && !jumpToWeek(w,true)) mvToast('Week '+w+' is filtered out — clear the search first');
+    return; }
   if(t.id==='planfile'){ if(t.files&&t.files[0]) planImport(t.files[0]); return; }
   const row=t.closest('.prow'); if(!row) return;
   const w=+row.dataset.w, r=planRow(w,row.dataset.id); if(!r) return;
@@ -6801,7 +7019,7 @@ function render(){
   }
 
   if(view==='pace' && paceMode==='mine'){
-    let html='<div class="card" style="margin-bottom:16px">'+planpickHTML()
+    let html=planpickHTML()+'<div class="card" style="margin-bottom:16px">'
      +'<p class="ev"><strong>Your own week-by-week plan.</strong> Add the '+esc(RES.unitword.toLowerCase())+' and lesson you will teach '
      +'each week, how many days you will give it, a note, and the resources you will assign. Choosing a lesson slides its '
      +'recommended resources up from the bottom &mdash; IXL skills and videos, IXL lessons, CK-12 FlexBook lessons and Khan Academy '
@@ -6835,6 +7053,7 @@ function render(){
         +'" id="pw'+c.week+'" data-w="'+c.week+'">'+planWeekBodyHTML(c.week)+'</div>';
     }
     wrap.innerHTML = html + (n?cards:'<div class="card empty">No week matches those filters.</div>');
+    fitPaceBar(); setTimeout(paceAutoJump,90);
     planSummary(); planStamp();
     const rows=Object.values(PLAN.weeks).flat();
     cnt.textContent = rows.length
@@ -6847,7 +7066,7 @@ function render(){
 
   if(view==='pace'){
     if(paceMode==='district' && !DISTRICT){
-      wrap.innerHTML = '<div class="card" style="margin-bottom:16px">'+planpickHTML()
+      wrap.innerHTML = planpickHTML()+'<div class="card" style="margin-bottom:16px">'
        +'<p class="ev"><strong>District pacing \u2014 Arkansas Online School.</strong> This mode is wired up, but the district '
        +'guide has not been loaded into the file yet. Send the Arkansas Online School pacing guide for this course '
        +'(a PDF, Word or Excel file is fine) and it will sit here beside the other two, week by week, with its own '
@@ -6864,7 +7083,7 @@ function render(){
       [PACE.capacity,'days you can teach new content','var(--accent)'],
       [R.requiredDays,'days this plan needs', fits?'var(--good-ink)':'var(--critical-ink)'],
       ['W'+PACE.atlasWeek,'ATLAS Summative starts','var(--critical-ink)']];
-    let html=`<div class="card" style="margin-bottom:16px">
+    let html=planpickHTML()+`<div class="card" style="margin-bottom:16px">
       <p class="ev"><strong>Where this comes from.</strong> Weeks, no-school days, quarter markers and testing
       windows are read from your corrected <em>school calendar</em> &mdash; 38 teaching weeks plus the three
       break weeks, with each day marked school or no-school and each testing window tagged with the grades it
@@ -6876,7 +7095,6 @@ function render(){
       Summative weeks the named test days (Tue&ndash;Wed) are blocked outright &mdash; <strong>the math test is
       Tuesday 27 April</strong>.</p>
       <div class="pacetiles">${tiles.map(([v,k,c])=>`<div class="tile"><div class="v"${c?` style="color:${c}"`:''}>${v}</div><div class="k">${k}</div></div>`).join('')}</div>
-      ${planpickHTML()}
       <p class="ev">${paceMode==='district'
         ? `<strong>District pacing &mdash; Arkansas Online School.</strong> This is your district&rsquo;s own sequence and day
            counts laid onto this calendar. It needs <strong>${R.requiredDays} days</strong> against
@@ -6936,8 +7154,8 @@ function render(){
       if(q && !wkHit && !its.length) continue;
       n++;
       const cls = w.isAtlasSummative?'atlas':(w.testingDays?'testing':(w.capacity?'':'off'));
-      out+=`<div class="wkcard ${cls}"><div class="wkhead">
-        <span class="wkno">W${w.week}</span>
+      out+=`<div class="wkcard ${cls}" id="pw${w.week}" data-w="${w.week}"><div class="wkhead">
+        <span class="wkno">W${w.week}</span>${weekIsNow(w.week)?'<span class="wknow">this week</span>':''}
         <span class="wkdate">${dt(w.start)} &ndash; ${dt(w.end)}</span>
         <span class="wkdays">${w.schoolDays} student day${w.schoolDays===1?'':'s'}${w.noSchoolDays?` &middot; ${w.noSchoolDays} off`:''}${w.testingDays?` &middot; ${w.testingDays} testing`:''} &middot; ${w.capacity} teachable${w.capNote?` (${esc(w.capNote)})`:''}</span>
         ${w.quarterStart?'<span class="qmark">quarter starts</span>':''}
@@ -6962,6 +7180,7 @@ function render(){
       out+=`</div>`;
     }
     wrap.innerHTML = html + (n?out:'<div class="card empty">Nothing matches those filters.</div>');
+    fitPaceBar(); setTimeout(paceAutoJump,90);
     cnt.textContent = `${R.plan.length} weeks · ${R.requiredDays} days needed of ${PACE.capacity} teachable `
       + `(${PACE.capacityBeforeAtlas} before ATLAS in W${PACE.atlasWeek}) · `
       + `${R.lessonsPlaced} of ${PACE.lessonsTotal} lessons placed`;
@@ -6972,7 +7191,7 @@ function render(){
     const units=[...new Set(RES.les.map(l=>l.unit))].sort((a,b)=>a-b).filter(u=>!df||u===df);
     const M=RES.meta||{};
     const li=(arr,f)=>arr.length?`<ul>${arr.map(f).join('')}</ul>`:'<p class="srcnote">nothing matched</p>';
-    let html=`<div class="card" style="margin-bottom:16px">
+    let html=planpickHTML()+`<div class="card" style="margin-bottom:16px">
       <p class="ev"><strong>How these links were made.</strong>
       <span class="exact">exact</span> Khan links come from Khan Academy&rsquo;s own Arkansas standard mapping &mdash; a direct
       code match. Khan maps <strong>${M.khanExactStandards}</strong> standards that way; where it does not, the closest
@@ -7051,7 +7270,7 @@ function render(){
     const byRef={}; ATLAS.les.forEach(l=>byRef[l.ref]=l);
     const units=[...new Set(ATLAS.les.map(l=>l.unit))].sort((a,b)=>a-b).filter(u=>!df||u===df);
     const risk=ATLAS.keyConcepts.filter(c=>((ATLAS.std||{})[c]||{}).cov!=='full');
-    let html=`<div class="card" style="margin-bottom:16px">
+    let html=planpickHTML()+`<div class="card" style="margin-bottom:16px">
       <div class="atrow">
         <div class="tile"><div class="v">${ATLAS.items}</div><div class="k">operational items</div></div>
         <div class="tile"><div class="v" style="font-size:19px;padding-top:6px">${esc(ATLAS.time)}</div><div class="k">test time</div></div>
@@ -7427,9 +7646,10 @@ function districtAuditHTML(A){
 }
 
 function planpickHTML(){
-  return '<div class="planpick" role="group" aria-label="Which pacing">'
+  return '<div class="planpickwrap"><div class="planpick" role="group" aria-label="Which pacing">'
     + PACEMODES.map(m=>'<button type="button" data-plan="'+m[0]+'" aria-pressed="'
-        +(paceMode===m[0])+'">'+m[1]+'</button>').join('') + '</div>';
+        +(paceMode===m[0])+'">'+m[1]+'</button>').join('') + '</div>'
+    + wkJumpHTML() + '</div>';
 }
 function snhue(s){
   const p=String(s||'').split('.')[0].toUpperCase(); let h=0;
@@ -7729,6 +7949,60 @@ function hdOpen(ref){
   });
 }
 
+
+/* ================= where am I in the year ================= */
+function paceWeeks(){ return (PACE.trimmed.plan||[]).map(c=>({w:c.week,start:c.start,end:c.end})); }
+function todayISO(){
+  const d=new Date(), p=n=>(n<10?'0':'')+n;
+  return d.getFullYear()+'-'+p(d.getMonth()+1)+'-'+p(d.getDate());
+}
+/* the week today falls in; failing that the next one to come; failing that the last */
+function currentWeek(){
+  const t=todayISO(), ws=paceWeeks();
+  if(!ws.length) return null;
+  for(const c of ws) if(c.start<=t && t<=c.end) return c.w;
+  for(const c of ws) if(t<c.start) return c.w;
+  return ws[ws.length-1].w;
+}
+function weekIsNow(w){ return currentWeek()===w; }
+function jumpToWeek(w,flash){
+  const card=document.getElementById('pw'+w);
+  if(!card) return false;
+  const bar=document.querySelector('.planpickwrap');
+  const shell=parseInt(getComputedStyle(document.documentElement)
+    .getPropertyValue('--shellbar'),10)||0;
+  const off=shell+(bar?bar.getBoundingClientRect().height:0)+14;
+  const y=card.getBoundingClientRect().top+window.scrollY-off;
+  window.scrollTo({top:Math.max(0,y),behavior:'smooth'});
+  if(flash!==false){
+    document.querySelectorAll('.wkcard.jumpto').forEach(c=>c.classList.remove('jumpto'));
+    card.classList.add('jumpto');
+    setTimeout(()=>card.classList.remove('jumpto'),2600);
+  }
+  return true;
+}
+/* the mode bar sticks under whatever else is already sticking */
+function fitPaceBar(){
+  const sb=document.querySelector('.stickybar');
+  document.documentElement.style.setProperty('--sb',
+    (sb?Math.ceil(sb.getBoundingClientRect().height):0)+'px');
+}
+let PACEJUMPED=false;
+function paceAutoJump(){
+  if(PACEJUMPED) return;
+  const w=currentWeek(); if(w==null) return;
+  if(jumpToWeek(w,true)) PACEJUMPED=true;
+}
+function wkJumpHTML(){
+  const now=currentWeek(), ws=paceWeeks();
+  return '<div class="wkjump">'
+    +'<button type="button" class="now" id="wknowbtn" title="jump to the week we are in">'
+    +(now!=null?'This week · W'+now:'This week')+'</button>'
+    +'<select id="wkjumpsel" aria-label="Jump to a week"><option value="">Jump to a week…</option>'
+    + ws.map(c=>'<option value="'+c.w+'">Week '+c.w+' · '+pdt(c.start)+' – '+pdt(c.end)
+        +(c.w===now?'  ← this week':'')+'</option>').join('')
+    +'</select></div>';
+}
 /* ================= duplicates, and moving resources ================= */
 var ONX = (typeof _on==='function') ? _on : function(t,e,f,o){ t.addEventListener(e,f,o); };
 function resKey(x){ return (x.url||'')+'|'+x.title; }
@@ -7881,8 +8155,8 @@ function mvPop(chip){
 }
 /* ================= assignments ================= */
 const ASGTYPES=['IXL skills','IXL assignment','IXL quiz','Schoology assignment','Schoology quiz',
-  'Reveal assignment','Reveal quiz','Khan assignment','CK-12 assignment','Paper / worksheet',
-  'Project','Test','Other'];
+  'SCORM lesson','Reveal assignment','Reveal quiz','Khan assignment','CK-12 assignment',
+  'Paper / worksheet','Project','Test','Other'];
 let asgSeq=1;
 function asgAll(){ if(!PLAN.asg) PLAN.asg={}; return PLAN.asg; }
 function asgList(w){ const a=asgAll(); if(!a[w]) a[w]=[]; return a[w]; }
@@ -7905,12 +8179,14 @@ function asgAutoType(items){
   if(one && /quiz/i.test(one.src+' '+one.kind+' '+one.title)) return /ixl/i.test(one.src)?'IXL quiz':'Schoology quiz';
   if(one && /schoology/i.test(one.src)) return /quiz/i.test(one.src)?'Schoology quiz':'Schoology assignment';
   if(one && /reveal|mcgraw/i.test(one.src+' '+one.title)) return 'Reveal assignment';
+  if(one && /scorm|interactive lesson/i.test(one.src+' '+one.kind)) return 'SCORM lesson';
   if(one && /khan/i.test(one.src)) return 'Khan assignment';
   const srcs=[...new Set(items.map(r=>String(r.src||'').toLowerCase()))];
   if(srcs.length===1){
     if(/ixl/.test(srcs[0])) return items.every(r=>/skill/i.test(r.kind||''))?'IXL skills':'IXL assignment';
     if(/khan/.test(srcs[0])) return 'Khan assignment';
     if(/ck-?12/.test(srcs[0])) return 'CK-12 assignment';
+    if(/scorm/.test(srcs[0])) return 'SCORM lesson';
     if(/schoology/.test(srcs[0])) return 'Schoology assignment';
     if(/reveal|mcgraw/.test(srcs[0])) return 'Reveal assignment';
   }
@@ -8183,7 +8459,8 @@ function rdKind(r){
   if(/lesson/.test(k)) return 'lessons';
   return 'other';
 }
-const CUSTYPES=['IXL quiz','Schoology assignment','Schoology quiz','Reveal assignment',
+const CUSTYPES=['IXL quiz','Schoology assignment','Schoology quiz',
+  'SCORM package (interactive lesson)','SCORM quiz','Reveal assignment',
   'Reveal quiz','Reveal ALEKS / eAssessment','YouTube video','Schoology page',
   'Google Form','Google Doc / Slides','Quizizz','Kahoot','Desmos activity','Nearpod','Edpuzzle',
   'Khan Academy assignment','Worksheet / PDF','Website','Other'];
@@ -8481,7 +8758,7 @@ function planWeekBodyHTML(w){
   const rows=planRows(w);
   const used=rows.reduce((a,r)=>a+(+r.days||0),0);
   return '<div class="wkhead">'
-   +'<span class="wkno">W'+w+'</span><span class="wkdate">'+pdt(cell.start)+' – '+pdt(cell.end)+'</span>'
+   +'<span class="wkno">W'+w+'</span>'+(weekIsNow(w)?'<span class="wknow">this week</span>':'')+'<span class="wkdate">'+pdt(cell.start)+' – '+pdt(cell.end)+'</span>'
    +'<span class="wkdays">'+cell.schoolDays+' student days'+(cell.noSchoolDays?' · '+cell.noSchoolDays+' off':'')
      +(cell.testingDays?' · '+cell.testingDays+' testing':'')+'</span>'
    +'<span class="daychip '+(used>cell.capacity?'over':(used?'ok':''))+'">'+(Math.round(used*10)/10)+' of '+cell.capacity+' days planned</span>'
@@ -8615,6 +8892,9 @@ _on(document,'click', function(e){
     cbs.forEach(c=>{ c.checked=on; const r=RDLIST[+c.dataset.i];
       if(r){ if(on) RDSEL.set(rdKey(r),r); else RDSEL.delete(rdKey(r)); } });
     t.textContent = on ? 'Unselect all shown' : 'Select all shown'; rdSelBar(); return; }
+  if(t.id==='wknowbtn'){ const w=currentWeek();
+    if(w!=null && !jumpToWeek(w,true)) mvToast('Week '+w+' is filtered out — clear the search first');
+    return; }
   if(t.classList.contains('pdupfix')){
     const card0=t.closest('.pw'); if(card0){ const n=dupClean(+card0.dataset.w);
       mvToast(n?('Removed '+n+' duplicate'+(n===1?'':'s')):'nothing to remove'); }
@@ -8656,6 +8936,9 @@ _on(document,'click', function(e){
 });
 _on(document,'change', function(e){
   const t=e.target;
+  if(t.id==='wkjumpsel'){ const w=+t.value; t.value='';
+    if(w && !jumpToWeek(w,true)) mvToast('Week '+w+' is filtered out — clear the search first');
+    return; }
   if(t.id==='planfile'){ if(t.files&&t.files[0]) planImport(t.files[0]); return; }
   const row=t.closest('.prow'); if(!row) return;
   const w=+row.dataset.w, r=planRow(w,row.dataset.id); if(!r) return;
@@ -8772,7 +9055,7 @@ function render(){
   }
 
   if(view==='pace' && paceMode==='mine'){
-    let html='<div class="card" style="margin-bottom:16px">'+planpickHTML()
+    let html=planpickHTML()+'<div class="card" style="margin-bottom:16px">'
      +'<p class="ev"><strong>Your own week-by-week plan.</strong> Add the '+esc(RES.unitword.toLowerCase())+' and lesson you will teach '
      +'each week, how many days you will give it, a note, and the resources you will assign. Choosing a lesson slides its '
      +'recommended resources up from the bottom &mdash; IXL skills and videos, IXL lessons, CK-12 FlexBook lessons and Khan Academy '
@@ -8806,6 +9089,7 @@ function render(){
         +'" id="pw'+c.week+'" data-w="'+c.week+'">'+planWeekBodyHTML(c.week)+'</div>';
     }
     wrap.innerHTML = html + (n?cards:'<div class="card empty">No week matches those filters.</div>');
+    fitPaceBar(); setTimeout(paceAutoJump,90);
     planSummary(); planStamp();
     const rows=Object.values(PLAN.weeks).flat();
     cnt.textContent = rows.length
@@ -8818,7 +9102,7 @@ function render(){
 
   if(view==='pace'){
     if(paceMode==='district' && !DISTRICT){
-      wrap.innerHTML = '<div class="card" style="margin-bottom:16px">'+planpickHTML()
+      wrap.innerHTML = planpickHTML()+'<div class="card" style="margin-bottom:16px">'
        +'<p class="ev"><strong>District pacing \u2014 Arkansas Online School.</strong> This mode is wired up, but the district '
        +'guide has not been loaded into the file yet. Send the Arkansas Online School pacing guide for this course '
        +'(a PDF, Word or Excel file is fine) and it will sit here beside the other two, week by week, with its own '
@@ -8835,7 +9119,7 @@ function render(){
       [PACE.capacity,'days you can teach new content','var(--accent)'],
       [R.requiredDays,'days this plan needs', fits?'var(--good-ink)':'var(--critical-ink)'],
       ['W'+PACE.atlasWeek,'ATLAS Summative starts','var(--critical-ink)']];
-    let html=`<div class="card" style="margin-bottom:16px">
+    let html=planpickHTML()+`<div class="card" style="margin-bottom:16px">
       <p class="ev"><strong>Where this comes from.</strong> Weeks, no-school days, quarter markers and testing
       windows are read from your corrected <em>school calendar</em> &mdash; 38 teaching weeks plus the three
       break weeks, with each day marked school or no-school and each testing window tagged with the grades it
@@ -8847,7 +9131,6 @@ function render(){
       Summative weeks the named test days (Tue&ndash;Wed) are blocked outright &mdash; <strong>the math test is
       Tuesday 27 April</strong>.</p>
       <div class="pacetiles">${tiles.map(([v,k,c])=>`<div class="tile"><div class="v"${c?` style="color:${c}"`:''}>${v}</div><div class="k">${k}</div></div>`).join('')}</div>
-      ${planpickHTML()}
       <p class="ev">${paceMode==='district'
         ? `<strong>District pacing &mdash; Arkansas Online School.</strong> This is your district&rsquo;s own sequence and day
            counts laid onto this calendar. It needs <strong>${R.requiredDays} days</strong> against
@@ -8907,8 +9190,8 @@ function render(){
       if(q && !wkHit && !its.length) continue;
       n++;
       const cls = w.isAtlasSummative?'atlas':(w.testingDays?'testing':(w.capacity?'':'off'));
-      out+=`<div class="wkcard ${cls}"><div class="wkhead">
-        <span class="wkno">W${w.week}</span>
+      out+=`<div class="wkcard ${cls}" id="pw${w.week}" data-w="${w.week}"><div class="wkhead">
+        <span class="wkno">W${w.week}</span>${weekIsNow(w.week)?'<span class="wknow">this week</span>':''}
         <span class="wkdate">${dt(w.start)} &ndash; ${dt(w.end)}</span>
         <span class="wkdays">${w.schoolDays} student day${w.schoolDays===1?'':'s'}${w.noSchoolDays?` &middot; ${w.noSchoolDays} off`:''}${w.testingDays?` &middot; ${w.testingDays} testing`:''} &middot; ${w.capacity} teachable${w.capNote?` (${esc(w.capNote)})`:''}</span>
         ${w.quarterStart?'<span class="qmark">quarter starts</span>':''}
@@ -8933,6 +9216,7 @@ function render(){
       out+=`</div>`;
     }
     wrap.innerHTML = html + (n?out:'<div class="card empty">Nothing matches those filters.</div>');
+    fitPaceBar(); setTimeout(paceAutoJump,90);
     cnt.textContent = `${R.plan.length} weeks · ${R.requiredDays} days needed of ${PACE.capacity} teachable `
       + `(${PACE.capacityBeforeAtlas} before ATLAS in W${PACE.atlasWeek}) · `
       + `${R.lessonsPlaced} of ${PACE.lessonsTotal} lessons placed`;
@@ -8943,7 +9227,7 @@ function render(){
     const units=[...new Set(RES.les.map(l=>l.unit))].sort((a,b)=>a-b).filter(u=>!df||u===df);
     const M=RES.meta||{};
     const li=(arr,f)=>arr.length?`<ul>${arr.map(f).join('')}</ul>`:'<p class="srcnote">nothing matched</p>';
-    let html=`<div class="card" style="margin-bottom:16px">
+    let html=planpickHTML()+`<div class="card" style="margin-bottom:16px">
       <p class="ev"><strong>How these links were made.</strong>
       <span class="exact">exact</span> Khan links come from Khan Academy&rsquo;s own Arkansas standard mapping &mdash; a direct
       code match. Khan maps <strong>${M.khanExactStandards}</strong> standards that way; where it does not, the closest
@@ -9022,7 +9306,7 @@ function render(){
     const byRef={}; ATLAS.les.forEach(l=>byRef[l.ref]=l);
     const units=[...new Set(ATLAS.les.map(l=>l.unit))].sort((a,b)=>a-b).filter(u=>!df||u===df);
     const risk=ATLAS.keyConcepts.filter(c=>((ATLAS.std||{})[c]||{}).cov!=='full');
-    let html=`<div class="card" style="margin-bottom:16px">
+    let html=planpickHTML()+`<div class="card" style="margin-bottom:16px">
       <div class="atrow">
         <div class="tile"><div class="v">${ATLAS.items}</div><div class="k">operational items</div></div>
         <div class="tile"><div class="v" style="font-size:19px;padding-top:6px">${esc(ATLAS.time)}</div><div class="k">test time</div></div>
