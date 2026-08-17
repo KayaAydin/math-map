@@ -792,6 +792,23 @@
     text-transform:uppercase;border-radius:5px;padding:2px 7px;margin-left:2px}
   @media (max-width:700px){ .wkjump{margin-left:0;width:100%} .wkjump select{flex:1 1 auto} }
   @media print{.planpickwrap{position:static;box-shadow:none} .wkjump{display:none}}
+
+  /* --- cartridge export --- */
+  .ccbtn{background:var(--surface);border:1px solid var(--ring);border-radius:999px;color:var(--ink2);
+    font:inherit;font-size:11.5px;font-weight:700;padding:4px 11px;cursor:pointer}
+  .ccbtn:hover{border-color:var(--accent);color:var(--accent)}
+  .ccdlg{position:fixed;inset:0;z-index:330;background:rgba(10,13,18,.55);display:flex;
+    align-items:center;justify-content:center;padding:20px}
+  .ccbox{background:var(--plane);border:1px solid var(--ring);border-radius:14px;padding:20px 22px;
+    width:min(520px,100%);box-shadow:0 30px 70px -30px rgba(0,0,0,.8)}
+  .ccbox h3{margin:0 0 6px;font-size:16px}
+  .ccbox p{margin:0 0 12px;font-size:12.5px;line-height:1.5;color:var(--ink2)}
+  .ccbox .grid{display:flex;gap:9px;flex-wrap:wrap;align-items:flex-end;margin:0 0 12px}
+  .ccbox label{display:flex;flex-direction:column;gap:4px;font-size:10px;font-weight:800;
+    letter-spacing:.07em;text-transform:uppercase;color:var(--muted)}
+  .ccbox select{background:var(--surface);color:var(--ink);border:1px solid var(--ring);
+    border-radius:8px;padding:7px 9px;font:inherit;font-size:12.5px;min-width:150px}
+  .ccbox .msg{font-size:12px;color:var(--ink2);min-height:17px;margin:10px 0 0}
 </style>
 </head>
 <body>
@@ -1929,6 +1946,343 @@ function hdOpen(ref){
 }
 
 
+
+/* ================= export a week as a Common Cartridge ================= */
+function ccCrc(u8){
+  let t=ccCrc.t;
+  if(!t){ t=ccCrc.t=[]; for(let n=0;n<256;n++){ let c=n;
+    for(let k=0;k<8;k++) c=c&1?0xEDB88320^(c>>>1):c>>>1; t[n]=c>>>0; } }
+  let c=0^-1;
+  for(let i=0;i<u8.length;i++) c=(c>>>8)^t[(c^u8[i])&0xFF];
+  return (c^-1)>>>0;
+}
+/* store-only zip: an .imscc is a zip with imsmanifest.xml at the root */
+function ccZip(files){
+  const enc=new TextEncoder(), parts=[], central=[];
+  let off=0;
+  const u16=n=>[n&255,(n>>8)&255], u32=n=>[n&255,(n>>8)&255,(n>>16)&255,(n>>24)&255];
+  files.forEach(f=>{
+    const name=enc.encode(f.name);
+    const data=(f.data instanceof Uint8Array)?f.data:enc.encode(f.data);
+    const crc=ccCrc(data);
+    const head=[].concat([0x50,0x4b,0x03,0x04],u16(20),u16(0x0800),u16(0),u16(0),u16(0),
+      u32(crc),u32(data.length),u32(data.length),u16(name.length),u16(0));
+    parts.push(new Uint8Array(head),name,data);
+    central.push([].concat([0x50,0x4b,0x01,0x02],u16(20),u16(20),u16(0x0800),u16(0),u16(0),u16(0),
+      u32(crc),u32(data.length),u32(data.length),u16(name.length),u16(0),u16(0),u16(0),u16(0),
+      u32(0),u32(off),Array.from(name)));
+    off+=head.length+name.length+data.length;
+  });
+  const cd=[].concat.apply([],central);
+  const end=[].concat([0x50,0x4b,0x05,0x06],u16(0),u16(0),u16(files.length),u16(files.length),
+    u32(cd.length),u32(off),u16(0));
+  return new Blob(parts.concat([new Uint8Array(cd),new Uint8Array(end)]),
+    {type:'application/zip'});
+}
+/* XML-safe text: a cartridge is parsed as XML, so only the five named entities exist */
+function cx(t){
+  return String(t==null?'':t).replace(/[\x00-\x08\x0B\x0C\x0E-\x1F]/g,'')
+    .replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;')
+    .replace(/"/g,'&quot;').replace(/'/g,'&apos;');
+}
+function ccCdata(html){ return '<![CDATA['+String(html||'').replace(/\]\]>/g,']]&gt;')+']]>'; }
+const CCPAGECSS="body{margin:0;padding:22px;font:400 15px/1.5 'Segoe UI',system-ui,-apple-system,"
+  +"Arial,sans-serif;color:#14181f;background:#fff}"
+  +"h1{font-size:26px;line-height:1.15;margin:0 0 4px;color:#0f766e}"
+  +".sub{font-size:14px;color:#5b6472;margin:0 0 16px;font-weight:600}"
+  +"h2{font-size:12px;letter-spacing:.11em;text-transform:uppercase;color:#0f766e;margin:20px 0 7px;"
+  +"border-bottom:2px solid #0f766e;padding-bottom:4px}"
+  +"ul{margin:0;padding-left:22px}li{margin-bottom:5px}.ican li{font-weight:700}"
+  +".term{background:#f4f8fb;border-left:5px solid #0f766e;border-radius:0 8px 8px 0;padding:7px 11px;"
+  +"margin:0 0 7px}.term b{display:block;font-size:16px}.term span{color:#5b6472;font-size:13.5px}"
+  +".std{background:#f4f8fb;border-radius:9px;padding:10px 13px;margin:0 0 8px}"
+  +".std b{color:#0f766e}.std i{display:block;color:#4a5462;font-style:normal;font-size:13.5px}"
+  +".wkinfo{background:#f4f8fb;border-left:5px solid #0f766e;border-radius:0 10px 10px 0;"
+  +"padding:12px 15px;margin:0 0 18px}.wkinfo p{margin:0 0 5px;font-size:14px;color:#33404f}"
+  +".meter{height:9px;background:#e7ecf3;border-radius:99px;overflow:hidden;margin:6px 0 16px}"
+  +".meter i{display:block;height:100%;background:#0f766e;width:0;transition:width .2s}"
+  +".ckrow{display:flex;gap:11px;align-items:flex-start;border:1px solid #e3e8f0;border-radius:10px;"
+  +"padding:10px 13px;margin:0 0 8px;background:#fff}"
+  +".ckrow.done{background:#f2f9f5;border-color:#bfe3cd}"
+  +".ckrow.done .t{text-decoration:line-through;color:#5b6472}"
+  +".ckrow input{width:21px;height:21px;margin:1px 0 0;flex:none;accent-color:#0f766e}"
+  +".ckrow .t{font-size:15.5px;font-weight:700;color:#14181f;line-height:1.3}"
+  +".ckrow .m{display:block;font-size:13px;font-weight:400;color:#5b6472;margin-top:2px}"
+  +".ckrow .kind{display:inline-block;font-size:9.5px;font-weight:800;letter-spacing:.05em;"
+  +"text-transform:uppercase;background:#eef2f8;color:#39404c;border-radius:4px;padding:1px 6px;"
+  +"margin-right:6px;vertical-align:1px}"
+  +".tools{display:flex;gap:9px;align-items:center;margin:14px 0 0;flex-wrap:wrap}"
+  +".tools button{background:#fff;border:1px solid #cdd6e2;border-radius:99px;font:inherit;"
+  +"font-size:13px;font-weight:700;color:#39404c;padding:5px 13px;cursor:pointer}"
+  +"#n{font-size:13.5px;font-weight:700;color:#0f766e}"
+  +".note{font-size:13px;color:#5b6472;border-top:1px solid #e3e8f0;margin-top:20px;padding-top:10px}"
+  +"@media print{.tools{display:none}}";
+const CCCHKJS="(function(){var K='aos.week.'+(document.body.getAttribute('data-week')||'x');"
+  +"var b=[].slice.call(document.querySelectorAll('input.ck'));"
+  +"function S(){try{return JSON.parse(localStorage.getItem(K)||'{}')}catch(e){return {}}}"
+  +"function C(){var d=b.filter(function(x){return x.checked}).length;"
+  +"var n=document.getElementById('n'),bar=document.getElementById('bar');"
+  +"if(n)n.textContent=d+' of '+b.length+' done';"
+  +"if(bar)bar.style.width=(b.length?Math.round(d/b.length*100):0)+'%';"
+  +"b.forEach(function(x){x.parentNode.className=x.checked?'ckrow done':'ckrow'})}"
+  +"var s=S();b.forEach(function(x,i){if(s[i])x.checked=true;"
+  +"x.addEventListener('change',function(){var o=S();o[i]=x.checked?1:0;"
+  +"try{localStorage.setItem(K,JSON.stringify(o))}catch(e){}C()})});"
+  +"var r=document.getElementById('reset');if(r)r.addEventListener('click',function(){"
+  +"b.forEach(function(x){x.checked=false});try{localStorage.removeItem(K)}catch(e){}C()});C()})();";
+
+function ccPage(title,sub,body,week){
+  return '<!DOCTYPE html>\n<html><head><meta charset="utf-8"/><title>'+cx(title)+'</title>'
+    +'<style>'+CCPAGECSS+'</style></head><body'+(week?' data-week="'+cx(week)+'"':'')+'>'
+    +'<h1>'+cx(title)+'</h1><p class="sub">'+cx(sub)+'</p>'+body
+    +(week?'<script>'+CCCHKJS+'<\/script>':'')+'</body></html>';
+}
+/* what a week is about, in the words the calendar already uses */
+function ccWeekInfo(w){
+  const c=(PACE.trimmed.plan||[]).find(x=>x.week===w)||{};
+  const rows=planRows(w), out=[];
+  const units=[...new Set(rows.map(r=>r.unit).filter(Boolean))];
+  out.push('<b>Week '+w+' &middot; '+cx(pdt(c.start))+' &ndash; '+cx(pdt(c.end))+'</b> &middot; '
+    +cx(PACE.label)+(units.length?' &middot; '+cx(RES.unitword+' '+units.join(', ')):''));
+  const bits=[];
+  if(c.schoolDays!=null) bits.push(c.schoolDays+' student days');
+  if(c.noSchoolDays) bits.push(c.noSchoolDays+' day'+(c.noSchoolDays===1?'':'s')+' off');
+  (c.windows||[]).forEach(x=>bits.push(cx(x.test)));
+  if(c.quarterStart) bits.push('a new quarter starts');
+  if(c.quarterEnd) bits.push('the quarter ends');
+  if(bits.length) out.push(bits.join(' &middot; ')+'.');
+  return out;
+}
+function ccStdsOf(w){
+  const s=new Set();
+  planRows(w).forEach(r=>{ const L=PLES.find(x=>x.ref===r.ref); (L&&L.std||[]).forEach(c=>s.add(c)); });
+  return [...s];
+}
+function ccKindWord(x){ return rdTypeWord(x); }
+
+/* ---- one week -> the files and the folder tree ---- */
+function ccWeek(w, files, tree, seq){
+  const rows=planRows(w).filter(r=>r.ref || (r.res||[]).length || r.notes);
+  if(!rows.length) return false;
+  const asg=asgList(w), H=(typeof hdData==='function')?hdData():null;
+  const inAsg=new Set();
+  asg.forEach(a=>(a.items||[]).forEach(x=>inAsg.add(resKey(x))));
+  const kids=[], id=n=>'W'+w+'_'+n;
+  const ck=[];
+
+  /* the lesson header pages come first in the checklist, in row order */
+  rows.forEach((r,ri)=>{
+    if(!r.ref) return;
+    const L=H&&H.lessons?H.lessons[r.ref]:null;
+    const e=(typeof hdEdits==='function')?hdEdits(r.ref):{};
+    const title=r.ref+' '+((L&&L.t)||TITLEBY[r.ref]||'');
+    let b='';
+    if(L){
+      const objs=(e.obj!=null?e.obj.split('\n'):(L.obj||[])).filter(x=>String(x).trim());
+      const icans=(e.ican!=null?e.ican.split('\n'):(L.ican||[])).filter(x=>String(x).trim());
+      if(objs.length||icans.length){
+        b+='<h2>What we are learning</h2>';
+        if(objs.length) b+='<ul>'+objs.map(x=>'<li>'+cx(x)+'</li>').join('')+'</ul>';
+        if(icans.length) b+='<ul class="ican">'+icans.map(x=>'<li>'+cx(x)+'</li>').join('')+'</ul>';
+      }
+      if((L.vocab||[]).length)
+        b+='<h2>Vocabulary</h2>'+L.vocab.map((v,i)=>{
+          const d=(e['v'+i]!=null?e['v'+i]:(v[1]||''));
+          return '<div class="term"><b>'+cx(v[0])+'</b>'+(d?'<span>'+cx(d)+'</span>':'')+'</div>';
+        }).join('');
+      if((L.std||[]).length)
+        b+='<h2>Arkansas standard'+(L.std.length>1?'s':'')+'</h2>'
+          +L.std.map(s=>'<div class="std"><b>'+(s[2]?'&#9733; ':'')+cx(s[0])+'</b><i>'+cx(s[1])
+            +(s[3]?' (part of the standard)':'')+'</i></div>').join('');
+      const desc=e.desc!=null?e.desc:(L.desc||'');
+      if(desc) b+='<h2>About this lesson</h2><p>'+cx(desc)+'</p>';
+    }
+    if(r.notes) b+='<h2>Note from your teacher</h2><p>'+cx(r.notes)+'</p>';
+    if(!b) b='<p>'+cx(title)+'</p>';
+    b+='<p class="note">'+cx(PACE.label)+' &middot; week '+w+'</p>';
+    const f='web/'+id('les'+ri)+'.html';
+    files.push({name:f, data:ccPage('Lesson header: '+title,
+      (L?(RES.unitword+' '+L.u+(L.ut?' · '+L.ut:'')):'')+' · Week '+w, b)});
+    kids.push({t:'Lesson header: '+title, r:id('les'+ri), type:'webcontent', href:f,
+               d:'Objective, I can statements, vocabulary and the standard for '+title+'.'});
+    ck.push(['read','Lesson header: '+title,'objective, vocabulary and the standard']);
+  });
+
+  /* the assignments you marked */
+  asg.forEach((a,ai)=>{
+    const links=(a.items||[]).filter(x=>x.url).map(x=>'<li><a href="'+cx(x.url)
+      +'" target="_blank">'+cx((x.num?x.num+' — ':'')+x.title)+'</a></li>').join('');
+    const plain=(a.items||[]).filter(x=>!x.url).map(x=>'<li>'+cx(x.title)+'</li>').join('');
+    const body='<p><b>'+cx(a.type||'Assignment')+'</b>'+(a.due?' &middot; due '+cx(a.due):'')+'</p>'
+      +((links||plain)?'<ul>'+links+plain+'</ul>':'')
+      +(/ixl/i.test(a.type||'')?'<p><i>Teacher note: for SmartScore passback, rebuild this with '
+        +'Add Materials &rarr; IXL Learning (LTI 1.3) and link these skills.</i></p>':'');
+    const f=id('asg'+ai)+'/assignment_settings.xml';
+    files.push({name:f, data:'<?xml version="1.0" encoding="UTF-8"?>\n'
+      +'<assignment xmlns="http://www.imsglobal.org/xsd/imscc_extensions/assignment"'
+      +' xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"'
+      +' xsi:schemaLocation="http://www.imsglobal.org/xsd/imscc_extensions/assignment'
+      +' http://www.imsglobal.org/profile/cc/ccv1p2/ccv1p2_assignment_v1p0.xsd"'
+      +' identifier="'+id('asg'+ai)+'_a">\n'
+      +'  <title>'+cx(a.name)+'</title>\n'
+      +'  <text texttype="text/html">'+ccCdata(body)+'</text>\n'
+      +'  <gradable points_possible="100">true</gradable>\n'
+      +'  <submission_formats><format type="html"/><format type="file"/></submission_formats>\n'
+      +'</assignment>'});
+    kids.push({t:a.name, r:id('asg'+ai), type:'assignment_xmlv1p0', href:f,
+               d:(a.type||'Assignment')+(a.due?' · due '+a.due:'')+' · '
+                 +(a.items||[]).length+' item'+((a.items||[]).length===1?'':'s')+'.'});
+    ck.push(['do',a.name,(a.type||'')+(a.due?' · due '+a.due:'')]);
+  });
+
+  /* everything else on the week, as its own link */
+  let li=0;
+  rows.forEach(r=>(r.res||[]).forEach(x=>{
+    if(!x.url || inAsg.has(resKey(x))) return;
+    const f=id('lnk'+li)+'/weblink.xml';
+    const t=(x.num?x.num+' — ':'')+x.title;
+    files.push({name:f, data:'<?xml version="1.0" encoding="UTF-8"?>\n'
+      +'<webLink xmlns="http://www.imsglobal.org/xsd/imsccv1p2/imswl_v1p2"'
+      +' xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"'
+      +' xsi:schemaLocation="http://www.imsglobal.org/xsd/imsccv1p2/imswl_v1p2'
+      +' http://www.imsglobal.org/profile/cc/ccv1p2/ccv1p2_imswl_v1p2.xsd">\n'
+      +'  <title>'+cx(t)+'</title>\n'
+      +'  <url href="'+cx(x.url)+'" target="_blank" windowFeatures=""/>\n'
+      +'</webLink>'});
+    kids.push({t:t, r:id('lnk'+li), type:'imswl_xmlv1p2', href:f,
+               d:(x.src||'')+' · '+ccKindWord(x)+(x.note?' · '+x.note:'')});
+    ck.push([ccKindWord(x)==='video'?'watch':(ccKindWord(x)==='skill'?'practice':'open'), t,
+             (x.src||'')+(x.num?' · '+x.num:'')]);
+    li++;
+  }));
+
+  /* the checklist goes first, and lists everything above in the same order */
+  const stds=ccStdsOf(w);
+  const chkBody='<div class="wkinfo">'+ccWeekInfo(w).map(x=>'<p>'+x+'</p>').join('')
+    +(stds.length?'<p><b>Standards this week:</b> '+cx(stds.join(', '))+'</p>':'')
+    +'</div><h2>Work through the week</h2><p id="n"></p><div class="meter"><i id="bar"></i></div>'
+    + ck.map(([k,t,m])=>'<label class="ckrow"><input type="checkbox" class="ck"/>'
+        +'<span class="t"><span class="kind">'+cx(k)+'</span>'+cx(t)
+        +(m?'<span class="m">'+cx(m)+'</span>':'')+'</span></label>').join('')
+    +'<div class="tools"><button type="button" id="reset">Clear the ticks</button>'
+    +'<span style="font-size:12.5px;color:#5b6472">Ticks are kept in this browser, for you only.'
+    +'</span></div>';
+  const cf='web/'+id('checklist')+'.html';
+  files.push({name:cf, data:ccPage('Week '+w+' checklist',
+    ccWeekInfo(w)[0].replace(/<[^>]+>/g,''), chkBody, 'w'+w+'_'+seq)});
+  kids.unshift({t:'START HERE — Week '+w+' checklist', r:id('checklist'), type:'webcontent',
+                href:cf, d:'Everything for week '+w+' in order, with tick boxes.'});
+
+  const c=(PACE.trimmed.plan||[]).find(x=>x.week===w)||{};
+  tree.push({t:'Week '+w+' · '+pdt(c.start)+' – '+pdt(c.end), kids:kids});
+  return true;
+}
+
+function ccBuild(fromW,toW){
+  const files=[], tree=[];
+  let n=0;
+  for(let w=fromW; w<=toW; w++) if(ccWeek(w, files, tree, ++n)) {}
+  if(!tree.length) return null;
+  /* a read-me at the root */
+  const rf='web/read_me.html';
+  files.push({name:rf, data:ccPage('About this import',
+    PACE.label+' · weeks '+fromW+'–'+toW,
+    '<div class="wkinfo"><p>Exported from the Arkansas &harr; Reveal Math map. Each week is a '
+    +'folder: the checklist first, then a lesson header page per lesson, your assignments, then '
+    +'the rest of the resources as links.</p>'
+    +'<p><b>Due dates are not part of Common Cartridge</b> — set them after importing.</p>'
+    +'<p><b>IXL links here are plain links.</b> For SmartScore passback, rebuild those assignments '
+    +'with Add Materials &rarr; IXL Learning (LTI 1.3); the assignment names list the exact skills.'
+    +'</p></div>')});
+  const items=[{t:'About this import', r:'READ_ME', type:'webcontent', href:rf,
+                d:'What this cartridge contains and what to do after importing.'}]
+    .concat(tree);
+  const flat=[];
+  function itemXML(it,d){
+    const pad=' '.repeat(d);
+    if(it.kids){
+      return pad+'<item identifier="F'+Math.abs(hashStr(it.t))+'">\n'
+        +pad+'  <title>'+cx(it.t)+'</title>\n'
+        + it.kids.map(k=>itemXML(k,d+2)).join('')
+        + pad+'</item>\n';
+    }
+    flat.push(it);
+    return pad+'<item identifier="I'+it.r+'" identifierref="'+it.r+'">\n'
+      +pad+'  <title>'+cx(it.t)+'</title>\n'+pad+'</item>\n';
+  }
+  const org=items.map(i=>itemXML(i,8)).join('');
+  const res=flat.map(it=>'    <resource identifier="'+it.r+'" type="'+it.type+'"'
+      +(it.type==='webcontent'?' href="'+it.href+'"':'')+'>\n'
+      +(it.d?'      <metadata><lom:lom><lom:general><lom:description>'
+        +'<lom:string language="en-US">'+cx(it.d)+'</lom:string></lom:description>'
+        +'</lom:general></lom:lom></metadata>\n':'')
+      +'      <file href="'+it.href+'"/>\n    </resource>\n').join('');
+  const title=PACE.label+' · weeks '+fromW+'–'+toW;
+  files.unshift({name:'imsmanifest.xml', data:'<?xml version="1.0" encoding="UTF-8"?>\n'
+    +'<manifest identifier="AOS_'+String(PACE.label).replace(/[^A-Za-z0-9]+/g,'_')+'_W'+fromW+'_'+toW+'"\n'
+    +'  xmlns="http://www.imsglobal.org/xsd/imsccv1p2/imscp_v1p1"\n'
+    +'  xmlns:lom="http://ltsc.ieee.org/xsd/imsccv1p2/LOM/resource"\n'
+    +'  xmlns:lomimscc="http://ltsc.ieee.org/xsd/imsccv1p2/LOM/manifest"\n'
+    +'  xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"\n'
+    +'  xsi:schemaLocation="http://www.imsglobal.org/xsd/imsccv1p2/imscp_v1p1 '
+    +'http://www.imsglobal.org/profile/cc/ccv1p2/ccv1p2_imscp_v1p2_v1p0.xsd '
+    +'http://ltsc.ieee.org/xsd/imsccv1p2/LOM/resource '
+    +'http://www.imsglobal.org/profile/cc/ccv1p2/LOM/ccv1p2_lomresource_v1p0.xsd '
+    +'http://ltsc.ieee.org/xsd/imsccv1p2/LOM/manifest '
+    +'http://www.imsglobal.org/profile/cc/ccv1p2/LOM/ccv1p2_lommanifest_v1p0.xsd">\n'
+    +'  <metadata>\n    <schema>IMS Common Cartridge</schema>\n'
+    +'    <schemaversion>1.2.0</schemaversion>\n'
+    +'    <lomimscc:lom><lomimscc:general><lomimscc:title><lomimscc:string language="en-US">'
+    +cx(title)+'</lomimscc:string></lomimscc:title></lomimscc:general></lomimscc:lom>\n'
+    +'  </metadata>\n'
+    +'  <organizations>\n    <organization identifier="ORG1" structure="rooted-hierarchy">\n'
+    +'      <item identifier="ROOT">\n'+org+'      </item>\n'
+    +'    </organization>\n  </organizations>\n'
+    +'  <resources>\n'+res+'  </resources>\n</manifest>'});
+  return {blob:ccZip(files), weeks:tree.length, items:flat.length,
+          name:String(PACE.label).replace(/[^A-Za-z0-9]+/g,'_')+'_W'
+            +(fromW<10?'0':'')+fromW+(toW!==fromW?('-W'+(toW<10?'0':'')+toW):'')+'.imscc'};
+}
+function hashStr(s){ let h=0; for(let i=0;i<s.length;i++) h=(h*31+s.charCodeAt(i))|0; return h; }
+function ccDownload(fromW,toW){
+  const out=ccBuild(fromW,toW);
+  if(!out) return mvToast(fromW===toW?('Week '+fromW+' has nothing in it yet')
+    :('weeks '+fromW+'–'+toW+' have nothing in them yet'));
+  const a=document.createElement('a');
+  a.href=URL.createObjectURL(out.blob); a.download=out.name;
+  document.body.appendChild(a); a.click(); a.remove();
+  setTimeout(()=>URL.revokeObjectURL(a.href),4000);
+  mvToast(out.name+' — '+out.weeks+' week'+(out.weeks===1?'':'s')+', '+out.items
+    +' materials. Import with Resources → Import.');
+  return out;
+}
+function ccDialog(){
+  const ws=(PACE.trimmed.plan||[]).map(c=>c.week);
+  const now=(typeof currentWeek==='function')?currentWeek():ws[0];
+  const opts=sel=>ws.map(w=>'<option value="'+w+'"'+(w===sel?' selected':'')+'>Week '+w+'</option>').join('');
+  const mask=document.createElement('div'); mask.className='ccdlg';
+  mask.innerHTML='<div class="ccbox"><h3>Export to Schoology</h3>'
+    +'<p>One folder per week, each starting with a checklist, then a lesson header page per lesson, '
+    +'your marked assignments, and the rest of the resources as links. Import in Schoology with '
+    +'<b>Resources &rarr; Import</b>, then add it to a course.</p>'
+    +'<div class="grid"><label>From<select id="ccfrom">'+opts(now)+'</select></label>'
+    +'<label>To<select id="ccto">'+opts(Math.min(now+8,ws[ws.length-1]))+'</select></label>'
+    +'<button type="button" class="btn primary" id="ccgo">Build the cartridge</button>'
+    +'<button type="button" class="btn" id="ccx">Close</button></div>'
+    +'<p class="msg" id="ccmsg">Due dates are not part of Common Cartridge — set them after importing.</p>'
+    +'</div>';
+  document.body.appendChild(mask);
+  const q=id=>mask.querySelector('#'+id);
+  mask.addEventListener('click',e=>{ if(e.target===mask) mask.remove(); });
+  q('ccx').addEventListener('click',()=>mask.remove());
+  q('ccgo').addEventListener('click',()=>{
+    const a=+q('ccfrom').value, b=+q('ccto').value;
+    if(b<a) return q('ccmsg').textContent='the second week has to come after the first';
+    q('ccmsg').textContent='building…';
+    setTimeout(()=>{ const out=ccDownload(a,b);
+      q('ccmsg').textContent=out?('Done — '+out.name):'those weeks are empty'; },30);
+  });
+}
 /* ================= where am I in the year ================= */
 function paceWeeks(){ return (PACE.trimmed.plan||[]).map(c=>({w:c.week,start:c.start,end:c.end})); }
 function todayISO(){
@@ -2762,6 +3116,8 @@ function planWeekBodyHTML(w){
         + (DISTRICT ? '<button type="button" class="btn tiny pfilld">prefill from district</button>' : '')
         + (rows.length?'<button type="button" class="btn tiny danger pclear">clear week</button>':'')
         + '<span class="grow"></span>'
+        + (rows.length?'<button type="button" class="ccbtn ccweek" data-w="'+w+'">'
+           +'&#11015; Cartridge</button>':'')
         + (rows.length?'<button type="button" class="btn primary psave">Save this week</button>':'')
         + '</div>');
 }
@@ -2871,6 +3227,8 @@ _on(document,'click', function(e){
     cbs.forEach(c=>{ c.checked=on; const r=RDLIST[+c.dataset.i];
       if(r){ if(on) RDSEL.set(rdKey(r),r); else RDSEL.delete(rdKey(r)); } });
     t.textContent = on ? 'Unselect all shown' : 'Select all shown'; rdSelBar(); return; }
+  if(t.classList.contains('ccweek')){ ccDownload(+t.dataset.w,+t.dataset.w); return; }
+  if(t.id==='ccexport'){ ccDialog(); return; }
   if(t.id==='wknowbtn'){ const w=currentWeek();
     if(w!=null && !jumpToWeek(w,true)) mvToast('Week '+w+' is filtered out — clear the search first');
     return; }
@@ -3019,6 +3377,7 @@ function render(){
      +(DISTRICT?'<button type="button" class="btn" id="planfilldist">Prefill the year from the district pacing</button>':'')
      +'<button type="button" class="btn" id="plansaveall">'+(Object.keys(PLAN.weeks).some(w=>planRows(w).length&&!weekSaved(w))?'Save all weeks':'Reopen all weeks for editing')+'</button>'
      +'<button type="button" class="btn" id="plandl">Download my plan</button>'
+     +'<button type="button" class="btn" id="ccexport">Export to Schoology (.imscc)</button>'
      +'<button type="button" class="btn" id="planup">Load a saved plan</button>'
      +'<input type="file" id="planfile" accept="application/json,.json" hidden>'
      +'<button type="button" class="btn danger" id="planwipe">Clear everything</button>'
@@ -3936,6 +4295,343 @@ function hdOpen(ref){
 }
 
 
+
+/* ================= export a week as a Common Cartridge ================= */
+function ccCrc(u8){
+  let t=ccCrc.t;
+  if(!t){ t=ccCrc.t=[]; for(let n=0;n<256;n++){ let c=n;
+    for(let k=0;k<8;k++) c=c&1?0xEDB88320^(c>>>1):c>>>1; t[n]=c>>>0; } }
+  let c=0^-1;
+  for(let i=0;i<u8.length;i++) c=(c>>>8)^t[(c^u8[i])&0xFF];
+  return (c^-1)>>>0;
+}
+/* store-only zip: an .imscc is a zip with imsmanifest.xml at the root */
+function ccZip(files){
+  const enc=new TextEncoder(), parts=[], central=[];
+  let off=0;
+  const u16=n=>[n&255,(n>>8)&255], u32=n=>[n&255,(n>>8)&255,(n>>16)&255,(n>>24)&255];
+  files.forEach(f=>{
+    const name=enc.encode(f.name);
+    const data=(f.data instanceof Uint8Array)?f.data:enc.encode(f.data);
+    const crc=ccCrc(data);
+    const head=[].concat([0x50,0x4b,0x03,0x04],u16(20),u16(0x0800),u16(0),u16(0),u16(0),
+      u32(crc),u32(data.length),u32(data.length),u16(name.length),u16(0));
+    parts.push(new Uint8Array(head),name,data);
+    central.push([].concat([0x50,0x4b,0x01,0x02],u16(20),u16(20),u16(0x0800),u16(0),u16(0),u16(0),
+      u32(crc),u32(data.length),u32(data.length),u16(name.length),u16(0),u16(0),u16(0),u16(0),
+      u32(0),u32(off),Array.from(name)));
+    off+=head.length+name.length+data.length;
+  });
+  const cd=[].concat.apply([],central);
+  const end=[].concat([0x50,0x4b,0x05,0x06],u16(0),u16(0),u16(files.length),u16(files.length),
+    u32(cd.length),u32(off),u16(0));
+  return new Blob(parts.concat([new Uint8Array(cd),new Uint8Array(end)]),
+    {type:'application/zip'});
+}
+/* XML-safe text: a cartridge is parsed as XML, so only the five named entities exist */
+function cx(t){
+  return String(t==null?'':t).replace(/[\x00-\x08\x0B\x0C\x0E-\x1F]/g,'')
+    .replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;')
+    .replace(/"/g,'&quot;').replace(/'/g,'&apos;');
+}
+function ccCdata(html){ return '<![CDATA['+String(html||'').replace(/\]\]>/g,']]&gt;')+']]>'; }
+const CCPAGECSS="body{margin:0;padding:22px;font:400 15px/1.5 'Segoe UI',system-ui,-apple-system,"
+  +"Arial,sans-serif;color:#14181f;background:#fff}"
+  +"h1{font-size:26px;line-height:1.15;margin:0 0 4px;color:#0f766e}"
+  +".sub{font-size:14px;color:#5b6472;margin:0 0 16px;font-weight:600}"
+  +"h2{font-size:12px;letter-spacing:.11em;text-transform:uppercase;color:#0f766e;margin:20px 0 7px;"
+  +"border-bottom:2px solid #0f766e;padding-bottom:4px}"
+  +"ul{margin:0;padding-left:22px}li{margin-bottom:5px}.ican li{font-weight:700}"
+  +".term{background:#f4f8fb;border-left:5px solid #0f766e;border-radius:0 8px 8px 0;padding:7px 11px;"
+  +"margin:0 0 7px}.term b{display:block;font-size:16px}.term span{color:#5b6472;font-size:13.5px}"
+  +".std{background:#f4f8fb;border-radius:9px;padding:10px 13px;margin:0 0 8px}"
+  +".std b{color:#0f766e}.std i{display:block;color:#4a5462;font-style:normal;font-size:13.5px}"
+  +".wkinfo{background:#f4f8fb;border-left:5px solid #0f766e;border-radius:0 10px 10px 0;"
+  +"padding:12px 15px;margin:0 0 18px}.wkinfo p{margin:0 0 5px;font-size:14px;color:#33404f}"
+  +".meter{height:9px;background:#e7ecf3;border-radius:99px;overflow:hidden;margin:6px 0 16px}"
+  +".meter i{display:block;height:100%;background:#0f766e;width:0;transition:width .2s}"
+  +".ckrow{display:flex;gap:11px;align-items:flex-start;border:1px solid #e3e8f0;border-radius:10px;"
+  +"padding:10px 13px;margin:0 0 8px;background:#fff}"
+  +".ckrow.done{background:#f2f9f5;border-color:#bfe3cd}"
+  +".ckrow.done .t{text-decoration:line-through;color:#5b6472}"
+  +".ckrow input{width:21px;height:21px;margin:1px 0 0;flex:none;accent-color:#0f766e}"
+  +".ckrow .t{font-size:15.5px;font-weight:700;color:#14181f;line-height:1.3}"
+  +".ckrow .m{display:block;font-size:13px;font-weight:400;color:#5b6472;margin-top:2px}"
+  +".ckrow .kind{display:inline-block;font-size:9.5px;font-weight:800;letter-spacing:.05em;"
+  +"text-transform:uppercase;background:#eef2f8;color:#39404c;border-radius:4px;padding:1px 6px;"
+  +"margin-right:6px;vertical-align:1px}"
+  +".tools{display:flex;gap:9px;align-items:center;margin:14px 0 0;flex-wrap:wrap}"
+  +".tools button{background:#fff;border:1px solid #cdd6e2;border-radius:99px;font:inherit;"
+  +"font-size:13px;font-weight:700;color:#39404c;padding:5px 13px;cursor:pointer}"
+  +"#n{font-size:13.5px;font-weight:700;color:#0f766e}"
+  +".note{font-size:13px;color:#5b6472;border-top:1px solid #e3e8f0;margin-top:20px;padding-top:10px}"
+  +"@media print{.tools{display:none}}";
+const CCCHKJS="(function(){var K='aos.week.'+(document.body.getAttribute('data-week')||'x');"
+  +"var b=[].slice.call(document.querySelectorAll('input.ck'));"
+  +"function S(){try{return JSON.parse(localStorage.getItem(K)||'{}')}catch(e){return {}}}"
+  +"function C(){var d=b.filter(function(x){return x.checked}).length;"
+  +"var n=document.getElementById('n'),bar=document.getElementById('bar');"
+  +"if(n)n.textContent=d+' of '+b.length+' done';"
+  +"if(bar)bar.style.width=(b.length?Math.round(d/b.length*100):0)+'%';"
+  +"b.forEach(function(x){x.parentNode.className=x.checked?'ckrow done':'ckrow'})}"
+  +"var s=S();b.forEach(function(x,i){if(s[i])x.checked=true;"
+  +"x.addEventListener('change',function(){var o=S();o[i]=x.checked?1:0;"
+  +"try{localStorage.setItem(K,JSON.stringify(o))}catch(e){}C()})});"
+  +"var r=document.getElementById('reset');if(r)r.addEventListener('click',function(){"
+  +"b.forEach(function(x){x.checked=false});try{localStorage.removeItem(K)}catch(e){}C()});C()})();";
+
+function ccPage(title,sub,body,week){
+  return '<!DOCTYPE html>\n<html><head><meta charset="utf-8"/><title>'+cx(title)+'</title>'
+    +'<style>'+CCPAGECSS+'</style></head><body'+(week?' data-week="'+cx(week)+'"':'')+'>'
+    +'<h1>'+cx(title)+'</h1><p class="sub">'+cx(sub)+'</p>'+body
+    +(week?'<script>'+CCCHKJS+'<\/script>':'')+'</body></html>';
+}
+/* what a week is about, in the words the calendar already uses */
+function ccWeekInfo(w){
+  const c=(PACE.trimmed.plan||[]).find(x=>x.week===w)||{};
+  const rows=planRows(w), out=[];
+  const units=[...new Set(rows.map(r=>r.unit).filter(Boolean))];
+  out.push('<b>Week '+w+' &middot; '+cx(pdt(c.start))+' &ndash; '+cx(pdt(c.end))+'</b> &middot; '
+    +cx(PACE.label)+(units.length?' &middot; '+cx(RES.unitword+' '+units.join(', ')):''));
+  const bits=[];
+  if(c.schoolDays!=null) bits.push(c.schoolDays+' student days');
+  if(c.noSchoolDays) bits.push(c.noSchoolDays+' day'+(c.noSchoolDays===1?'':'s')+' off');
+  (c.windows||[]).forEach(x=>bits.push(cx(x.test)));
+  if(c.quarterStart) bits.push('a new quarter starts');
+  if(c.quarterEnd) bits.push('the quarter ends');
+  if(bits.length) out.push(bits.join(' &middot; ')+'.');
+  return out;
+}
+function ccStdsOf(w){
+  const s=new Set();
+  planRows(w).forEach(r=>{ const L=PLES.find(x=>x.ref===r.ref); (L&&L.std||[]).forEach(c=>s.add(c)); });
+  return [...s];
+}
+function ccKindWord(x){ return rdTypeWord(x); }
+
+/* ---- one week -> the files and the folder tree ---- */
+function ccWeek(w, files, tree, seq){
+  const rows=planRows(w).filter(r=>r.ref || (r.res||[]).length || r.notes);
+  if(!rows.length) return false;
+  const asg=asgList(w), H=(typeof hdData==='function')?hdData():null;
+  const inAsg=new Set();
+  asg.forEach(a=>(a.items||[]).forEach(x=>inAsg.add(resKey(x))));
+  const kids=[], id=n=>'W'+w+'_'+n;
+  const ck=[];
+
+  /* the lesson header pages come first in the checklist, in row order */
+  rows.forEach((r,ri)=>{
+    if(!r.ref) return;
+    const L=H&&H.lessons?H.lessons[r.ref]:null;
+    const e=(typeof hdEdits==='function')?hdEdits(r.ref):{};
+    const title=r.ref+' '+((L&&L.t)||TITLEBY[r.ref]||'');
+    let b='';
+    if(L){
+      const objs=(e.obj!=null?e.obj.split('\n'):(L.obj||[])).filter(x=>String(x).trim());
+      const icans=(e.ican!=null?e.ican.split('\n'):(L.ican||[])).filter(x=>String(x).trim());
+      if(objs.length||icans.length){
+        b+='<h2>What we are learning</h2>';
+        if(objs.length) b+='<ul>'+objs.map(x=>'<li>'+cx(x)+'</li>').join('')+'</ul>';
+        if(icans.length) b+='<ul class="ican">'+icans.map(x=>'<li>'+cx(x)+'</li>').join('')+'</ul>';
+      }
+      if((L.vocab||[]).length)
+        b+='<h2>Vocabulary</h2>'+L.vocab.map((v,i)=>{
+          const d=(e['v'+i]!=null?e['v'+i]:(v[1]||''));
+          return '<div class="term"><b>'+cx(v[0])+'</b>'+(d?'<span>'+cx(d)+'</span>':'')+'</div>';
+        }).join('');
+      if((L.std||[]).length)
+        b+='<h2>Arkansas standard'+(L.std.length>1?'s':'')+'</h2>'
+          +L.std.map(s=>'<div class="std"><b>'+(s[2]?'&#9733; ':'')+cx(s[0])+'</b><i>'+cx(s[1])
+            +(s[3]?' (part of the standard)':'')+'</i></div>').join('');
+      const desc=e.desc!=null?e.desc:(L.desc||'');
+      if(desc) b+='<h2>About this lesson</h2><p>'+cx(desc)+'</p>';
+    }
+    if(r.notes) b+='<h2>Note from your teacher</h2><p>'+cx(r.notes)+'</p>';
+    if(!b) b='<p>'+cx(title)+'</p>';
+    b+='<p class="note">'+cx(PACE.label)+' &middot; week '+w+'</p>';
+    const f='web/'+id('les'+ri)+'.html';
+    files.push({name:f, data:ccPage('Lesson header: '+title,
+      (L?(RES.unitword+' '+L.u+(L.ut?' · '+L.ut:'')):'')+' · Week '+w, b)});
+    kids.push({t:'Lesson header: '+title, r:id('les'+ri), type:'webcontent', href:f,
+               d:'Objective, I can statements, vocabulary and the standard for '+title+'.'});
+    ck.push(['read','Lesson header: '+title,'objective, vocabulary and the standard']);
+  });
+
+  /* the assignments you marked */
+  asg.forEach((a,ai)=>{
+    const links=(a.items||[]).filter(x=>x.url).map(x=>'<li><a href="'+cx(x.url)
+      +'" target="_blank">'+cx((x.num?x.num+' — ':'')+x.title)+'</a></li>').join('');
+    const plain=(a.items||[]).filter(x=>!x.url).map(x=>'<li>'+cx(x.title)+'</li>').join('');
+    const body='<p><b>'+cx(a.type||'Assignment')+'</b>'+(a.due?' &middot; due '+cx(a.due):'')+'</p>'
+      +((links||plain)?'<ul>'+links+plain+'</ul>':'')
+      +(/ixl/i.test(a.type||'')?'<p><i>Teacher note: for SmartScore passback, rebuild this with '
+        +'Add Materials &rarr; IXL Learning (LTI 1.3) and link these skills.</i></p>':'');
+    const f=id('asg'+ai)+'/assignment_settings.xml';
+    files.push({name:f, data:'<?xml version="1.0" encoding="UTF-8"?>\n'
+      +'<assignment xmlns="http://www.imsglobal.org/xsd/imscc_extensions/assignment"'
+      +' xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"'
+      +' xsi:schemaLocation="http://www.imsglobal.org/xsd/imscc_extensions/assignment'
+      +' http://www.imsglobal.org/profile/cc/ccv1p2/ccv1p2_assignment_v1p0.xsd"'
+      +' identifier="'+id('asg'+ai)+'_a">\n'
+      +'  <title>'+cx(a.name)+'</title>\n'
+      +'  <text texttype="text/html">'+ccCdata(body)+'</text>\n'
+      +'  <gradable points_possible="100">true</gradable>\n'
+      +'  <submission_formats><format type="html"/><format type="file"/></submission_formats>\n'
+      +'</assignment>'});
+    kids.push({t:a.name, r:id('asg'+ai), type:'assignment_xmlv1p0', href:f,
+               d:(a.type||'Assignment')+(a.due?' · due '+a.due:'')+' · '
+                 +(a.items||[]).length+' item'+((a.items||[]).length===1?'':'s')+'.'});
+    ck.push(['do',a.name,(a.type||'')+(a.due?' · due '+a.due:'')]);
+  });
+
+  /* everything else on the week, as its own link */
+  let li=0;
+  rows.forEach(r=>(r.res||[]).forEach(x=>{
+    if(!x.url || inAsg.has(resKey(x))) return;
+    const f=id('lnk'+li)+'/weblink.xml';
+    const t=(x.num?x.num+' — ':'')+x.title;
+    files.push({name:f, data:'<?xml version="1.0" encoding="UTF-8"?>\n'
+      +'<webLink xmlns="http://www.imsglobal.org/xsd/imsccv1p2/imswl_v1p2"'
+      +' xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"'
+      +' xsi:schemaLocation="http://www.imsglobal.org/xsd/imsccv1p2/imswl_v1p2'
+      +' http://www.imsglobal.org/profile/cc/ccv1p2/ccv1p2_imswl_v1p2.xsd">\n'
+      +'  <title>'+cx(t)+'</title>\n'
+      +'  <url href="'+cx(x.url)+'" target="_blank" windowFeatures=""/>\n'
+      +'</webLink>'});
+    kids.push({t:t, r:id('lnk'+li), type:'imswl_xmlv1p2', href:f,
+               d:(x.src||'')+' · '+ccKindWord(x)+(x.note?' · '+x.note:'')});
+    ck.push([ccKindWord(x)==='video'?'watch':(ccKindWord(x)==='skill'?'practice':'open'), t,
+             (x.src||'')+(x.num?' · '+x.num:'')]);
+    li++;
+  }));
+
+  /* the checklist goes first, and lists everything above in the same order */
+  const stds=ccStdsOf(w);
+  const chkBody='<div class="wkinfo">'+ccWeekInfo(w).map(x=>'<p>'+x+'</p>').join('')
+    +(stds.length?'<p><b>Standards this week:</b> '+cx(stds.join(', '))+'</p>':'')
+    +'</div><h2>Work through the week</h2><p id="n"></p><div class="meter"><i id="bar"></i></div>'
+    + ck.map(([k,t,m])=>'<label class="ckrow"><input type="checkbox" class="ck"/>'
+        +'<span class="t"><span class="kind">'+cx(k)+'</span>'+cx(t)
+        +(m?'<span class="m">'+cx(m)+'</span>':'')+'</span></label>').join('')
+    +'<div class="tools"><button type="button" id="reset">Clear the ticks</button>'
+    +'<span style="font-size:12.5px;color:#5b6472">Ticks are kept in this browser, for you only.'
+    +'</span></div>';
+  const cf='web/'+id('checklist')+'.html';
+  files.push({name:cf, data:ccPage('Week '+w+' checklist',
+    ccWeekInfo(w)[0].replace(/<[^>]+>/g,''), chkBody, 'w'+w+'_'+seq)});
+  kids.unshift({t:'START HERE — Week '+w+' checklist', r:id('checklist'), type:'webcontent',
+                href:cf, d:'Everything for week '+w+' in order, with tick boxes.'});
+
+  const c=(PACE.trimmed.plan||[]).find(x=>x.week===w)||{};
+  tree.push({t:'Week '+w+' · '+pdt(c.start)+' – '+pdt(c.end), kids:kids});
+  return true;
+}
+
+function ccBuild(fromW,toW){
+  const files=[], tree=[];
+  let n=0;
+  for(let w=fromW; w<=toW; w++) if(ccWeek(w, files, tree, ++n)) {}
+  if(!tree.length) return null;
+  /* a read-me at the root */
+  const rf='web/read_me.html';
+  files.push({name:rf, data:ccPage('About this import',
+    PACE.label+' · weeks '+fromW+'–'+toW,
+    '<div class="wkinfo"><p>Exported from the Arkansas &harr; Reveal Math map. Each week is a '
+    +'folder: the checklist first, then a lesson header page per lesson, your assignments, then '
+    +'the rest of the resources as links.</p>'
+    +'<p><b>Due dates are not part of Common Cartridge</b> — set them after importing.</p>'
+    +'<p><b>IXL links here are plain links.</b> For SmartScore passback, rebuild those assignments '
+    +'with Add Materials &rarr; IXL Learning (LTI 1.3); the assignment names list the exact skills.'
+    +'</p></div>')});
+  const items=[{t:'About this import', r:'READ_ME', type:'webcontent', href:rf,
+                d:'What this cartridge contains and what to do after importing.'}]
+    .concat(tree);
+  const flat=[];
+  function itemXML(it,d){
+    const pad=' '.repeat(d);
+    if(it.kids){
+      return pad+'<item identifier="F'+Math.abs(hashStr(it.t))+'">\n'
+        +pad+'  <title>'+cx(it.t)+'</title>\n'
+        + it.kids.map(k=>itemXML(k,d+2)).join('')
+        + pad+'</item>\n';
+    }
+    flat.push(it);
+    return pad+'<item identifier="I'+it.r+'" identifierref="'+it.r+'">\n'
+      +pad+'  <title>'+cx(it.t)+'</title>\n'+pad+'</item>\n';
+  }
+  const org=items.map(i=>itemXML(i,8)).join('');
+  const res=flat.map(it=>'    <resource identifier="'+it.r+'" type="'+it.type+'"'
+      +(it.type==='webcontent'?' href="'+it.href+'"':'')+'>\n'
+      +(it.d?'      <metadata><lom:lom><lom:general><lom:description>'
+        +'<lom:string language="en-US">'+cx(it.d)+'</lom:string></lom:description>'
+        +'</lom:general></lom:lom></metadata>\n':'')
+      +'      <file href="'+it.href+'"/>\n    </resource>\n').join('');
+  const title=PACE.label+' · weeks '+fromW+'–'+toW;
+  files.unshift({name:'imsmanifest.xml', data:'<?xml version="1.0" encoding="UTF-8"?>\n'
+    +'<manifest identifier="AOS_'+String(PACE.label).replace(/[^A-Za-z0-9]+/g,'_')+'_W'+fromW+'_'+toW+'"\n'
+    +'  xmlns="http://www.imsglobal.org/xsd/imsccv1p2/imscp_v1p1"\n'
+    +'  xmlns:lom="http://ltsc.ieee.org/xsd/imsccv1p2/LOM/resource"\n'
+    +'  xmlns:lomimscc="http://ltsc.ieee.org/xsd/imsccv1p2/LOM/manifest"\n'
+    +'  xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"\n'
+    +'  xsi:schemaLocation="http://www.imsglobal.org/xsd/imsccv1p2/imscp_v1p1 '
+    +'http://www.imsglobal.org/profile/cc/ccv1p2/ccv1p2_imscp_v1p2_v1p0.xsd '
+    +'http://ltsc.ieee.org/xsd/imsccv1p2/LOM/resource '
+    +'http://www.imsglobal.org/profile/cc/ccv1p2/LOM/ccv1p2_lomresource_v1p0.xsd '
+    +'http://ltsc.ieee.org/xsd/imsccv1p2/LOM/manifest '
+    +'http://www.imsglobal.org/profile/cc/ccv1p2/LOM/ccv1p2_lommanifest_v1p0.xsd">\n'
+    +'  <metadata>\n    <schema>IMS Common Cartridge</schema>\n'
+    +'    <schemaversion>1.2.0</schemaversion>\n'
+    +'    <lomimscc:lom><lomimscc:general><lomimscc:title><lomimscc:string language="en-US">'
+    +cx(title)+'</lomimscc:string></lomimscc:title></lomimscc:general></lomimscc:lom>\n'
+    +'  </metadata>\n'
+    +'  <organizations>\n    <organization identifier="ORG1" structure="rooted-hierarchy">\n'
+    +'      <item identifier="ROOT">\n'+org+'      </item>\n'
+    +'    </organization>\n  </organizations>\n'
+    +'  <resources>\n'+res+'  </resources>\n</manifest>'});
+  return {blob:ccZip(files), weeks:tree.length, items:flat.length,
+          name:String(PACE.label).replace(/[^A-Za-z0-9]+/g,'_')+'_W'
+            +(fromW<10?'0':'')+fromW+(toW!==fromW?('-W'+(toW<10?'0':'')+toW):'')+'.imscc'};
+}
+function hashStr(s){ let h=0; for(let i=0;i<s.length;i++) h=(h*31+s.charCodeAt(i))|0; return h; }
+function ccDownload(fromW,toW){
+  const out=ccBuild(fromW,toW);
+  if(!out) return mvToast(fromW===toW?('Week '+fromW+' has nothing in it yet')
+    :('weeks '+fromW+'–'+toW+' have nothing in them yet'));
+  const a=document.createElement('a');
+  a.href=URL.createObjectURL(out.blob); a.download=out.name;
+  document.body.appendChild(a); a.click(); a.remove();
+  setTimeout(()=>URL.revokeObjectURL(a.href),4000);
+  mvToast(out.name+' — '+out.weeks+' week'+(out.weeks===1?'':'s')+', '+out.items
+    +' materials. Import with Resources → Import.');
+  return out;
+}
+function ccDialog(){
+  const ws=(PACE.trimmed.plan||[]).map(c=>c.week);
+  const now=(typeof currentWeek==='function')?currentWeek():ws[0];
+  const opts=sel=>ws.map(w=>'<option value="'+w+'"'+(w===sel?' selected':'')+'>Week '+w+'</option>').join('');
+  const mask=document.createElement('div'); mask.className='ccdlg';
+  mask.innerHTML='<div class="ccbox"><h3>Export to Schoology</h3>'
+    +'<p>One folder per week, each starting with a checklist, then a lesson header page per lesson, '
+    +'your marked assignments, and the rest of the resources as links. Import in Schoology with '
+    +'<b>Resources &rarr; Import</b>, then add it to a course.</p>'
+    +'<div class="grid"><label>From<select id="ccfrom">'+opts(now)+'</select></label>'
+    +'<label>To<select id="ccto">'+opts(Math.min(now+8,ws[ws.length-1]))+'</select></label>'
+    +'<button type="button" class="btn primary" id="ccgo">Build the cartridge</button>'
+    +'<button type="button" class="btn" id="ccx">Close</button></div>'
+    +'<p class="msg" id="ccmsg">Due dates are not part of Common Cartridge — set them after importing.</p>'
+    +'</div>';
+  document.body.appendChild(mask);
+  const q=id=>mask.querySelector('#'+id);
+  mask.addEventListener('click',e=>{ if(e.target===mask) mask.remove(); });
+  q('ccx').addEventListener('click',()=>mask.remove());
+  q('ccgo').addEventListener('click',()=>{
+    const a=+q('ccfrom').value, b=+q('ccto').value;
+    if(b<a) return q('ccmsg').textContent='the second week has to come after the first';
+    q('ccmsg').textContent='building…';
+    setTimeout(()=>{ const out=ccDownload(a,b);
+      q('ccmsg').textContent=out?('Done — '+out.name):'those weeks are empty'; },30);
+  });
+}
 /* ================= where am I in the year ================= */
 function paceWeeks(){ return (PACE.trimmed.plan||[]).map(c=>({w:c.week,start:c.start,end:c.end})); }
 function todayISO(){
@@ -4769,6 +5465,8 @@ function planWeekBodyHTML(w){
         + (DISTRICT ? '<button type="button" class="btn tiny pfilld">prefill from district</button>' : '')
         + (rows.length?'<button type="button" class="btn tiny danger pclear">clear week</button>':'')
         + '<span class="grow"></span>'
+        + (rows.length?'<button type="button" class="ccbtn ccweek" data-w="'+w+'">'
+           +'&#11015; Cartridge</button>':'')
         + (rows.length?'<button type="button" class="btn primary psave">Save this week</button>':'')
         + '</div>');
 }
@@ -4878,6 +5576,8 @@ _on(document,'click', function(e){
     cbs.forEach(c=>{ c.checked=on; const r=RDLIST[+c.dataset.i];
       if(r){ if(on) RDSEL.set(rdKey(r),r); else RDSEL.delete(rdKey(r)); } });
     t.textContent = on ? 'Unselect all shown' : 'Select all shown'; rdSelBar(); return; }
+  if(t.classList.contains('ccweek')){ ccDownload(+t.dataset.w,+t.dataset.w); return; }
+  if(t.id==='ccexport'){ ccDialog(); return; }
   if(t.id==='wknowbtn'){ const w=currentWeek();
     if(w!=null && !jumpToWeek(w,true)) mvToast('Week '+w+' is filtered out — clear the search first');
     return; }
@@ -5025,6 +5725,7 @@ function render(){
      +(DISTRICT?'<button type="button" class="btn" id="planfilldist">Prefill the year from the district pacing</button>':'')
      +'<button type="button" class="btn" id="plansaveall">'+(Object.keys(PLAN.weeks).some(w=>planRows(w).length&&!weekSaved(w))?'Save all weeks':'Reopen all weeks for editing')+'</button>'
      +'<button type="button" class="btn" id="plandl">Download my plan</button>'
+     +'<button type="button" class="btn" id="ccexport">Export to Schoology (.imscc)</button>'
      +'<button type="button" class="btn" id="planup">Load a saved plan</button>'
      +'<input type="file" id="planfile" accept="application/json,.json" hidden>'
      +'<button type="button" class="btn danger" id="planwipe">Clear everything</button>'
@@ -5942,6 +6643,343 @@ function hdOpen(ref){
 }
 
 
+
+/* ================= export a week as a Common Cartridge ================= */
+function ccCrc(u8){
+  let t=ccCrc.t;
+  if(!t){ t=ccCrc.t=[]; for(let n=0;n<256;n++){ let c=n;
+    for(let k=0;k<8;k++) c=c&1?0xEDB88320^(c>>>1):c>>>1; t[n]=c>>>0; } }
+  let c=0^-1;
+  for(let i=0;i<u8.length;i++) c=(c>>>8)^t[(c^u8[i])&0xFF];
+  return (c^-1)>>>0;
+}
+/* store-only zip: an .imscc is a zip with imsmanifest.xml at the root */
+function ccZip(files){
+  const enc=new TextEncoder(), parts=[], central=[];
+  let off=0;
+  const u16=n=>[n&255,(n>>8)&255], u32=n=>[n&255,(n>>8)&255,(n>>16)&255,(n>>24)&255];
+  files.forEach(f=>{
+    const name=enc.encode(f.name);
+    const data=(f.data instanceof Uint8Array)?f.data:enc.encode(f.data);
+    const crc=ccCrc(data);
+    const head=[].concat([0x50,0x4b,0x03,0x04],u16(20),u16(0x0800),u16(0),u16(0),u16(0),
+      u32(crc),u32(data.length),u32(data.length),u16(name.length),u16(0));
+    parts.push(new Uint8Array(head),name,data);
+    central.push([].concat([0x50,0x4b,0x01,0x02],u16(20),u16(20),u16(0x0800),u16(0),u16(0),u16(0),
+      u32(crc),u32(data.length),u32(data.length),u16(name.length),u16(0),u16(0),u16(0),u16(0),
+      u32(0),u32(off),Array.from(name)));
+    off+=head.length+name.length+data.length;
+  });
+  const cd=[].concat.apply([],central);
+  const end=[].concat([0x50,0x4b,0x05,0x06],u16(0),u16(0),u16(files.length),u16(files.length),
+    u32(cd.length),u32(off),u16(0));
+  return new Blob(parts.concat([new Uint8Array(cd),new Uint8Array(end)]),
+    {type:'application/zip'});
+}
+/* XML-safe text: a cartridge is parsed as XML, so only the five named entities exist */
+function cx(t){
+  return String(t==null?'':t).replace(/[\x00-\x08\x0B\x0C\x0E-\x1F]/g,'')
+    .replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;')
+    .replace(/"/g,'&quot;').replace(/'/g,'&apos;');
+}
+function ccCdata(html){ return '<![CDATA['+String(html||'').replace(/\]\]>/g,']]&gt;')+']]>'; }
+const CCPAGECSS="body{margin:0;padding:22px;font:400 15px/1.5 'Segoe UI',system-ui,-apple-system,"
+  +"Arial,sans-serif;color:#14181f;background:#fff}"
+  +"h1{font-size:26px;line-height:1.15;margin:0 0 4px;color:#0f766e}"
+  +".sub{font-size:14px;color:#5b6472;margin:0 0 16px;font-weight:600}"
+  +"h2{font-size:12px;letter-spacing:.11em;text-transform:uppercase;color:#0f766e;margin:20px 0 7px;"
+  +"border-bottom:2px solid #0f766e;padding-bottom:4px}"
+  +"ul{margin:0;padding-left:22px}li{margin-bottom:5px}.ican li{font-weight:700}"
+  +".term{background:#f4f8fb;border-left:5px solid #0f766e;border-radius:0 8px 8px 0;padding:7px 11px;"
+  +"margin:0 0 7px}.term b{display:block;font-size:16px}.term span{color:#5b6472;font-size:13.5px}"
+  +".std{background:#f4f8fb;border-radius:9px;padding:10px 13px;margin:0 0 8px}"
+  +".std b{color:#0f766e}.std i{display:block;color:#4a5462;font-style:normal;font-size:13.5px}"
+  +".wkinfo{background:#f4f8fb;border-left:5px solid #0f766e;border-radius:0 10px 10px 0;"
+  +"padding:12px 15px;margin:0 0 18px}.wkinfo p{margin:0 0 5px;font-size:14px;color:#33404f}"
+  +".meter{height:9px;background:#e7ecf3;border-radius:99px;overflow:hidden;margin:6px 0 16px}"
+  +".meter i{display:block;height:100%;background:#0f766e;width:0;transition:width .2s}"
+  +".ckrow{display:flex;gap:11px;align-items:flex-start;border:1px solid #e3e8f0;border-radius:10px;"
+  +"padding:10px 13px;margin:0 0 8px;background:#fff}"
+  +".ckrow.done{background:#f2f9f5;border-color:#bfe3cd}"
+  +".ckrow.done .t{text-decoration:line-through;color:#5b6472}"
+  +".ckrow input{width:21px;height:21px;margin:1px 0 0;flex:none;accent-color:#0f766e}"
+  +".ckrow .t{font-size:15.5px;font-weight:700;color:#14181f;line-height:1.3}"
+  +".ckrow .m{display:block;font-size:13px;font-weight:400;color:#5b6472;margin-top:2px}"
+  +".ckrow .kind{display:inline-block;font-size:9.5px;font-weight:800;letter-spacing:.05em;"
+  +"text-transform:uppercase;background:#eef2f8;color:#39404c;border-radius:4px;padding:1px 6px;"
+  +"margin-right:6px;vertical-align:1px}"
+  +".tools{display:flex;gap:9px;align-items:center;margin:14px 0 0;flex-wrap:wrap}"
+  +".tools button{background:#fff;border:1px solid #cdd6e2;border-radius:99px;font:inherit;"
+  +"font-size:13px;font-weight:700;color:#39404c;padding:5px 13px;cursor:pointer}"
+  +"#n{font-size:13.5px;font-weight:700;color:#0f766e}"
+  +".note{font-size:13px;color:#5b6472;border-top:1px solid #e3e8f0;margin-top:20px;padding-top:10px}"
+  +"@media print{.tools{display:none}}";
+const CCCHKJS="(function(){var K='aos.week.'+(document.body.getAttribute('data-week')||'x');"
+  +"var b=[].slice.call(document.querySelectorAll('input.ck'));"
+  +"function S(){try{return JSON.parse(localStorage.getItem(K)||'{}')}catch(e){return {}}}"
+  +"function C(){var d=b.filter(function(x){return x.checked}).length;"
+  +"var n=document.getElementById('n'),bar=document.getElementById('bar');"
+  +"if(n)n.textContent=d+' of '+b.length+' done';"
+  +"if(bar)bar.style.width=(b.length?Math.round(d/b.length*100):0)+'%';"
+  +"b.forEach(function(x){x.parentNode.className=x.checked?'ckrow done':'ckrow'})}"
+  +"var s=S();b.forEach(function(x,i){if(s[i])x.checked=true;"
+  +"x.addEventListener('change',function(){var o=S();o[i]=x.checked?1:0;"
+  +"try{localStorage.setItem(K,JSON.stringify(o))}catch(e){}C()})});"
+  +"var r=document.getElementById('reset');if(r)r.addEventListener('click',function(){"
+  +"b.forEach(function(x){x.checked=false});try{localStorage.removeItem(K)}catch(e){}C()});C()})();";
+
+function ccPage(title,sub,body,week){
+  return '<!DOCTYPE html>\n<html><head><meta charset="utf-8"/><title>'+cx(title)+'</title>'
+    +'<style>'+CCPAGECSS+'</style></head><body'+(week?' data-week="'+cx(week)+'"':'')+'>'
+    +'<h1>'+cx(title)+'</h1><p class="sub">'+cx(sub)+'</p>'+body
+    +(week?'<script>'+CCCHKJS+'<\/script>':'')+'</body></html>';
+}
+/* what a week is about, in the words the calendar already uses */
+function ccWeekInfo(w){
+  const c=(PACE.trimmed.plan||[]).find(x=>x.week===w)||{};
+  const rows=planRows(w), out=[];
+  const units=[...new Set(rows.map(r=>r.unit).filter(Boolean))];
+  out.push('<b>Week '+w+' &middot; '+cx(pdt(c.start))+' &ndash; '+cx(pdt(c.end))+'</b> &middot; '
+    +cx(PACE.label)+(units.length?' &middot; '+cx(RES.unitword+' '+units.join(', ')):''));
+  const bits=[];
+  if(c.schoolDays!=null) bits.push(c.schoolDays+' student days');
+  if(c.noSchoolDays) bits.push(c.noSchoolDays+' day'+(c.noSchoolDays===1?'':'s')+' off');
+  (c.windows||[]).forEach(x=>bits.push(cx(x.test)));
+  if(c.quarterStart) bits.push('a new quarter starts');
+  if(c.quarterEnd) bits.push('the quarter ends');
+  if(bits.length) out.push(bits.join(' &middot; ')+'.');
+  return out;
+}
+function ccStdsOf(w){
+  const s=new Set();
+  planRows(w).forEach(r=>{ const L=PLES.find(x=>x.ref===r.ref); (L&&L.std||[]).forEach(c=>s.add(c)); });
+  return [...s];
+}
+function ccKindWord(x){ return rdTypeWord(x); }
+
+/* ---- one week -> the files and the folder tree ---- */
+function ccWeek(w, files, tree, seq){
+  const rows=planRows(w).filter(r=>r.ref || (r.res||[]).length || r.notes);
+  if(!rows.length) return false;
+  const asg=asgList(w), H=(typeof hdData==='function')?hdData():null;
+  const inAsg=new Set();
+  asg.forEach(a=>(a.items||[]).forEach(x=>inAsg.add(resKey(x))));
+  const kids=[], id=n=>'W'+w+'_'+n;
+  const ck=[];
+
+  /* the lesson header pages come first in the checklist, in row order */
+  rows.forEach((r,ri)=>{
+    if(!r.ref) return;
+    const L=H&&H.lessons?H.lessons[r.ref]:null;
+    const e=(typeof hdEdits==='function')?hdEdits(r.ref):{};
+    const title=r.ref+' '+((L&&L.t)||TITLEBY[r.ref]||'');
+    let b='';
+    if(L){
+      const objs=(e.obj!=null?e.obj.split('\n'):(L.obj||[])).filter(x=>String(x).trim());
+      const icans=(e.ican!=null?e.ican.split('\n'):(L.ican||[])).filter(x=>String(x).trim());
+      if(objs.length||icans.length){
+        b+='<h2>What we are learning</h2>';
+        if(objs.length) b+='<ul>'+objs.map(x=>'<li>'+cx(x)+'</li>').join('')+'</ul>';
+        if(icans.length) b+='<ul class="ican">'+icans.map(x=>'<li>'+cx(x)+'</li>').join('')+'</ul>';
+      }
+      if((L.vocab||[]).length)
+        b+='<h2>Vocabulary</h2>'+L.vocab.map((v,i)=>{
+          const d=(e['v'+i]!=null?e['v'+i]:(v[1]||''));
+          return '<div class="term"><b>'+cx(v[0])+'</b>'+(d?'<span>'+cx(d)+'</span>':'')+'</div>';
+        }).join('');
+      if((L.std||[]).length)
+        b+='<h2>Arkansas standard'+(L.std.length>1?'s':'')+'</h2>'
+          +L.std.map(s=>'<div class="std"><b>'+(s[2]?'&#9733; ':'')+cx(s[0])+'</b><i>'+cx(s[1])
+            +(s[3]?' (part of the standard)':'')+'</i></div>').join('');
+      const desc=e.desc!=null?e.desc:(L.desc||'');
+      if(desc) b+='<h2>About this lesson</h2><p>'+cx(desc)+'</p>';
+    }
+    if(r.notes) b+='<h2>Note from your teacher</h2><p>'+cx(r.notes)+'</p>';
+    if(!b) b='<p>'+cx(title)+'</p>';
+    b+='<p class="note">'+cx(PACE.label)+' &middot; week '+w+'</p>';
+    const f='web/'+id('les'+ri)+'.html';
+    files.push({name:f, data:ccPage('Lesson header: '+title,
+      (L?(RES.unitword+' '+L.u+(L.ut?' · '+L.ut:'')):'')+' · Week '+w, b)});
+    kids.push({t:'Lesson header: '+title, r:id('les'+ri), type:'webcontent', href:f,
+               d:'Objective, I can statements, vocabulary and the standard for '+title+'.'});
+    ck.push(['read','Lesson header: '+title,'objective, vocabulary and the standard']);
+  });
+
+  /* the assignments you marked */
+  asg.forEach((a,ai)=>{
+    const links=(a.items||[]).filter(x=>x.url).map(x=>'<li><a href="'+cx(x.url)
+      +'" target="_blank">'+cx((x.num?x.num+' — ':'')+x.title)+'</a></li>').join('');
+    const plain=(a.items||[]).filter(x=>!x.url).map(x=>'<li>'+cx(x.title)+'</li>').join('');
+    const body='<p><b>'+cx(a.type||'Assignment')+'</b>'+(a.due?' &middot; due '+cx(a.due):'')+'</p>'
+      +((links||plain)?'<ul>'+links+plain+'</ul>':'')
+      +(/ixl/i.test(a.type||'')?'<p><i>Teacher note: for SmartScore passback, rebuild this with '
+        +'Add Materials &rarr; IXL Learning (LTI 1.3) and link these skills.</i></p>':'');
+    const f=id('asg'+ai)+'/assignment_settings.xml';
+    files.push({name:f, data:'<?xml version="1.0" encoding="UTF-8"?>\n'
+      +'<assignment xmlns="http://www.imsglobal.org/xsd/imscc_extensions/assignment"'
+      +' xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"'
+      +' xsi:schemaLocation="http://www.imsglobal.org/xsd/imscc_extensions/assignment'
+      +' http://www.imsglobal.org/profile/cc/ccv1p2/ccv1p2_assignment_v1p0.xsd"'
+      +' identifier="'+id('asg'+ai)+'_a">\n'
+      +'  <title>'+cx(a.name)+'</title>\n'
+      +'  <text texttype="text/html">'+ccCdata(body)+'</text>\n'
+      +'  <gradable points_possible="100">true</gradable>\n'
+      +'  <submission_formats><format type="html"/><format type="file"/></submission_formats>\n'
+      +'</assignment>'});
+    kids.push({t:a.name, r:id('asg'+ai), type:'assignment_xmlv1p0', href:f,
+               d:(a.type||'Assignment')+(a.due?' · due '+a.due:'')+' · '
+                 +(a.items||[]).length+' item'+((a.items||[]).length===1?'':'s')+'.'});
+    ck.push(['do',a.name,(a.type||'')+(a.due?' · due '+a.due:'')]);
+  });
+
+  /* everything else on the week, as its own link */
+  let li=0;
+  rows.forEach(r=>(r.res||[]).forEach(x=>{
+    if(!x.url || inAsg.has(resKey(x))) return;
+    const f=id('lnk'+li)+'/weblink.xml';
+    const t=(x.num?x.num+' — ':'')+x.title;
+    files.push({name:f, data:'<?xml version="1.0" encoding="UTF-8"?>\n'
+      +'<webLink xmlns="http://www.imsglobal.org/xsd/imsccv1p2/imswl_v1p2"'
+      +' xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"'
+      +' xsi:schemaLocation="http://www.imsglobal.org/xsd/imsccv1p2/imswl_v1p2'
+      +' http://www.imsglobal.org/profile/cc/ccv1p2/ccv1p2_imswl_v1p2.xsd">\n'
+      +'  <title>'+cx(t)+'</title>\n'
+      +'  <url href="'+cx(x.url)+'" target="_blank" windowFeatures=""/>\n'
+      +'</webLink>'});
+    kids.push({t:t, r:id('lnk'+li), type:'imswl_xmlv1p2', href:f,
+               d:(x.src||'')+' · '+ccKindWord(x)+(x.note?' · '+x.note:'')});
+    ck.push([ccKindWord(x)==='video'?'watch':(ccKindWord(x)==='skill'?'practice':'open'), t,
+             (x.src||'')+(x.num?' · '+x.num:'')]);
+    li++;
+  }));
+
+  /* the checklist goes first, and lists everything above in the same order */
+  const stds=ccStdsOf(w);
+  const chkBody='<div class="wkinfo">'+ccWeekInfo(w).map(x=>'<p>'+x+'</p>').join('')
+    +(stds.length?'<p><b>Standards this week:</b> '+cx(stds.join(', '))+'</p>':'')
+    +'</div><h2>Work through the week</h2><p id="n"></p><div class="meter"><i id="bar"></i></div>'
+    + ck.map(([k,t,m])=>'<label class="ckrow"><input type="checkbox" class="ck"/>'
+        +'<span class="t"><span class="kind">'+cx(k)+'</span>'+cx(t)
+        +(m?'<span class="m">'+cx(m)+'</span>':'')+'</span></label>').join('')
+    +'<div class="tools"><button type="button" id="reset">Clear the ticks</button>'
+    +'<span style="font-size:12.5px;color:#5b6472">Ticks are kept in this browser, for you only.'
+    +'</span></div>';
+  const cf='web/'+id('checklist')+'.html';
+  files.push({name:cf, data:ccPage('Week '+w+' checklist',
+    ccWeekInfo(w)[0].replace(/<[^>]+>/g,''), chkBody, 'w'+w+'_'+seq)});
+  kids.unshift({t:'START HERE — Week '+w+' checklist', r:id('checklist'), type:'webcontent',
+                href:cf, d:'Everything for week '+w+' in order, with tick boxes.'});
+
+  const c=(PACE.trimmed.plan||[]).find(x=>x.week===w)||{};
+  tree.push({t:'Week '+w+' · '+pdt(c.start)+' – '+pdt(c.end), kids:kids});
+  return true;
+}
+
+function ccBuild(fromW,toW){
+  const files=[], tree=[];
+  let n=0;
+  for(let w=fromW; w<=toW; w++) if(ccWeek(w, files, tree, ++n)) {}
+  if(!tree.length) return null;
+  /* a read-me at the root */
+  const rf='web/read_me.html';
+  files.push({name:rf, data:ccPage('About this import',
+    PACE.label+' · weeks '+fromW+'–'+toW,
+    '<div class="wkinfo"><p>Exported from the Arkansas &harr; Reveal Math map. Each week is a '
+    +'folder: the checklist first, then a lesson header page per lesson, your assignments, then '
+    +'the rest of the resources as links.</p>'
+    +'<p><b>Due dates are not part of Common Cartridge</b> — set them after importing.</p>'
+    +'<p><b>IXL links here are plain links.</b> For SmartScore passback, rebuild those assignments '
+    +'with Add Materials &rarr; IXL Learning (LTI 1.3); the assignment names list the exact skills.'
+    +'</p></div>')});
+  const items=[{t:'About this import', r:'READ_ME', type:'webcontent', href:rf,
+                d:'What this cartridge contains and what to do after importing.'}]
+    .concat(tree);
+  const flat=[];
+  function itemXML(it,d){
+    const pad=' '.repeat(d);
+    if(it.kids){
+      return pad+'<item identifier="F'+Math.abs(hashStr(it.t))+'">\n'
+        +pad+'  <title>'+cx(it.t)+'</title>\n'
+        + it.kids.map(k=>itemXML(k,d+2)).join('')
+        + pad+'</item>\n';
+    }
+    flat.push(it);
+    return pad+'<item identifier="I'+it.r+'" identifierref="'+it.r+'">\n'
+      +pad+'  <title>'+cx(it.t)+'</title>\n'+pad+'</item>\n';
+  }
+  const org=items.map(i=>itemXML(i,8)).join('');
+  const res=flat.map(it=>'    <resource identifier="'+it.r+'" type="'+it.type+'"'
+      +(it.type==='webcontent'?' href="'+it.href+'"':'')+'>\n'
+      +(it.d?'      <metadata><lom:lom><lom:general><lom:description>'
+        +'<lom:string language="en-US">'+cx(it.d)+'</lom:string></lom:description>'
+        +'</lom:general></lom:lom></metadata>\n':'')
+      +'      <file href="'+it.href+'"/>\n    </resource>\n').join('');
+  const title=PACE.label+' · weeks '+fromW+'–'+toW;
+  files.unshift({name:'imsmanifest.xml', data:'<?xml version="1.0" encoding="UTF-8"?>\n'
+    +'<manifest identifier="AOS_'+String(PACE.label).replace(/[^A-Za-z0-9]+/g,'_')+'_W'+fromW+'_'+toW+'"\n'
+    +'  xmlns="http://www.imsglobal.org/xsd/imsccv1p2/imscp_v1p1"\n'
+    +'  xmlns:lom="http://ltsc.ieee.org/xsd/imsccv1p2/LOM/resource"\n'
+    +'  xmlns:lomimscc="http://ltsc.ieee.org/xsd/imsccv1p2/LOM/manifest"\n'
+    +'  xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"\n'
+    +'  xsi:schemaLocation="http://www.imsglobal.org/xsd/imsccv1p2/imscp_v1p1 '
+    +'http://www.imsglobal.org/profile/cc/ccv1p2/ccv1p2_imscp_v1p2_v1p0.xsd '
+    +'http://ltsc.ieee.org/xsd/imsccv1p2/LOM/resource '
+    +'http://www.imsglobal.org/profile/cc/ccv1p2/LOM/ccv1p2_lomresource_v1p0.xsd '
+    +'http://ltsc.ieee.org/xsd/imsccv1p2/LOM/manifest '
+    +'http://www.imsglobal.org/profile/cc/ccv1p2/LOM/ccv1p2_lommanifest_v1p0.xsd">\n'
+    +'  <metadata>\n    <schema>IMS Common Cartridge</schema>\n'
+    +'    <schemaversion>1.2.0</schemaversion>\n'
+    +'    <lomimscc:lom><lomimscc:general><lomimscc:title><lomimscc:string language="en-US">'
+    +cx(title)+'</lomimscc:string></lomimscc:title></lomimscc:general></lomimscc:lom>\n'
+    +'  </metadata>\n'
+    +'  <organizations>\n    <organization identifier="ORG1" structure="rooted-hierarchy">\n'
+    +'      <item identifier="ROOT">\n'+org+'      </item>\n'
+    +'    </organization>\n  </organizations>\n'
+    +'  <resources>\n'+res+'  </resources>\n</manifest>'});
+  return {blob:ccZip(files), weeks:tree.length, items:flat.length,
+          name:String(PACE.label).replace(/[^A-Za-z0-9]+/g,'_')+'_W'
+            +(fromW<10?'0':'')+fromW+(toW!==fromW?('-W'+(toW<10?'0':'')+toW):'')+'.imscc'};
+}
+function hashStr(s){ let h=0; for(let i=0;i<s.length;i++) h=(h*31+s.charCodeAt(i))|0; return h; }
+function ccDownload(fromW,toW){
+  const out=ccBuild(fromW,toW);
+  if(!out) return mvToast(fromW===toW?('Week '+fromW+' has nothing in it yet')
+    :('weeks '+fromW+'–'+toW+' have nothing in them yet'));
+  const a=document.createElement('a');
+  a.href=URL.createObjectURL(out.blob); a.download=out.name;
+  document.body.appendChild(a); a.click(); a.remove();
+  setTimeout(()=>URL.revokeObjectURL(a.href),4000);
+  mvToast(out.name+' — '+out.weeks+' week'+(out.weeks===1?'':'s')+', '+out.items
+    +' materials. Import with Resources → Import.');
+  return out;
+}
+function ccDialog(){
+  const ws=(PACE.trimmed.plan||[]).map(c=>c.week);
+  const now=(typeof currentWeek==='function')?currentWeek():ws[0];
+  const opts=sel=>ws.map(w=>'<option value="'+w+'"'+(w===sel?' selected':'')+'>Week '+w+'</option>').join('');
+  const mask=document.createElement('div'); mask.className='ccdlg';
+  mask.innerHTML='<div class="ccbox"><h3>Export to Schoology</h3>'
+    +'<p>One folder per week, each starting with a checklist, then a lesson header page per lesson, '
+    +'your marked assignments, and the rest of the resources as links. Import in Schoology with '
+    +'<b>Resources &rarr; Import</b>, then add it to a course.</p>'
+    +'<div class="grid"><label>From<select id="ccfrom">'+opts(now)+'</select></label>'
+    +'<label>To<select id="ccto">'+opts(Math.min(now+8,ws[ws.length-1]))+'</select></label>'
+    +'<button type="button" class="btn primary" id="ccgo">Build the cartridge</button>'
+    +'<button type="button" class="btn" id="ccx">Close</button></div>'
+    +'<p class="msg" id="ccmsg">Due dates are not part of Common Cartridge — set them after importing.</p>'
+    +'</div>';
+  document.body.appendChild(mask);
+  const q=id=>mask.querySelector('#'+id);
+  mask.addEventListener('click',e=>{ if(e.target===mask) mask.remove(); });
+  q('ccx').addEventListener('click',()=>mask.remove());
+  q('ccgo').addEventListener('click',()=>{
+    const a=+q('ccfrom').value, b=+q('ccto').value;
+    if(b<a) return q('ccmsg').textContent='the second week has to come after the first';
+    q('ccmsg').textContent='building…';
+    setTimeout(()=>{ const out=ccDownload(a,b);
+      q('ccmsg').textContent=out?('Done — '+out.name):'those weeks are empty'; },30);
+  });
+}
 /* ================= where am I in the year ================= */
 function paceWeeks(){ return (PACE.trimmed.plan||[]).map(c=>({w:c.week,start:c.start,end:c.end})); }
 function todayISO(){
@@ -6775,6 +7813,8 @@ function planWeekBodyHTML(w){
         + (DISTRICT ? '<button type="button" class="btn tiny pfilld">prefill from district</button>' : '')
         + (rows.length?'<button type="button" class="btn tiny danger pclear">clear week</button>':'')
         + '<span class="grow"></span>'
+        + (rows.length?'<button type="button" class="ccbtn ccweek" data-w="'+w+'">'
+           +'&#11015; Cartridge</button>':'')
         + (rows.length?'<button type="button" class="btn primary psave">Save this week</button>':'')
         + '</div>');
 }
@@ -6884,6 +7924,8 @@ _on(document,'click', function(e){
     cbs.forEach(c=>{ c.checked=on; const r=RDLIST[+c.dataset.i];
       if(r){ if(on) RDSEL.set(rdKey(r),r); else RDSEL.delete(rdKey(r)); } });
     t.textContent = on ? 'Unselect all shown' : 'Select all shown'; rdSelBar(); return; }
+  if(t.classList.contains('ccweek')){ ccDownload(+t.dataset.w,+t.dataset.w); return; }
+  if(t.id==='ccexport'){ ccDialog(); return; }
   if(t.id==='wknowbtn'){ const w=currentWeek();
     if(w!=null && !jumpToWeek(w,true)) mvToast('Week '+w+' is filtered out — clear the search first');
     return; }
@@ -7031,6 +8073,7 @@ function render(){
      +(DISTRICT?'<button type="button" class="btn" id="planfilldist">Prefill the year from the district pacing</button>':'')
      +'<button type="button" class="btn" id="plansaveall">'+(Object.keys(PLAN.weeks).some(w=>planRows(w).length&&!weekSaved(w))?'Save all weeks':'Reopen all weeks for editing')+'</button>'
      +'<button type="button" class="btn" id="plandl">Download my plan</button>'
+     +'<button type="button" class="btn" id="ccexport">Export to Schoology (.imscc)</button>'
      +'<button type="button" class="btn" id="planup">Load a saved plan</button>'
      +'<input type="file" id="planfile" accept="application/json,.json" hidden>'
      +'<button type="button" class="btn danger" id="planwipe">Clear everything</button>'
@@ -7950,6 +8993,343 @@ function hdOpen(ref){
 }
 
 
+
+/* ================= export a week as a Common Cartridge ================= */
+function ccCrc(u8){
+  let t=ccCrc.t;
+  if(!t){ t=ccCrc.t=[]; for(let n=0;n<256;n++){ let c=n;
+    for(let k=0;k<8;k++) c=c&1?0xEDB88320^(c>>>1):c>>>1; t[n]=c>>>0; } }
+  let c=0^-1;
+  for(let i=0;i<u8.length;i++) c=(c>>>8)^t[(c^u8[i])&0xFF];
+  return (c^-1)>>>0;
+}
+/* store-only zip: an .imscc is a zip with imsmanifest.xml at the root */
+function ccZip(files){
+  const enc=new TextEncoder(), parts=[], central=[];
+  let off=0;
+  const u16=n=>[n&255,(n>>8)&255], u32=n=>[n&255,(n>>8)&255,(n>>16)&255,(n>>24)&255];
+  files.forEach(f=>{
+    const name=enc.encode(f.name);
+    const data=(f.data instanceof Uint8Array)?f.data:enc.encode(f.data);
+    const crc=ccCrc(data);
+    const head=[].concat([0x50,0x4b,0x03,0x04],u16(20),u16(0x0800),u16(0),u16(0),u16(0),
+      u32(crc),u32(data.length),u32(data.length),u16(name.length),u16(0));
+    parts.push(new Uint8Array(head),name,data);
+    central.push([].concat([0x50,0x4b,0x01,0x02],u16(20),u16(20),u16(0x0800),u16(0),u16(0),u16(0),
+      u32(crc),u32(data.length),u32(data.length),u16(name.length),u16(0),u16(0),u16(0),u16(0),
+      u32(0),u32(off),Array.from(name)));
+    off+=head.length+name.length+data.length;
+  });
+  const cd=[].concat.apply([],central);
+  const end=[].concat([0x50,0x4b,0x05,0x06],u16(0),u16(0),u16(files.length),u16(files.length),
+    u32(cd.length),u32(off),u16(0));
+  return new Blob(parts.concat([new Uint8Array(cd),new Uint8Array(end)]),
+    {type:'application/zip'});
+}
+/* XML-safe text: a cartridge is parsed as XML, so only the five named entities exist */
+function cx(t){
+  return String(t==null?'':t).replace(/[\x00-\x08\x0B\x0C\x0E-\x1F]/g,'')
+    .replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;')
+    .replace(/"/g,'&quot;').replace(/'/g,'&apos;');
+}
+function ccCdata(html){ return '<![CDATA['+String(html||'').replace(/\]\]>/g,']]&gt;')+']]>'; }
+const CCPAGECSS="body{margin:0;padding:22px;font:400 15px/1.5 'Segoe UI',system-ui,-apple-system,"
+  +"Arial,sans-serif;color:#14181f;background:#fff}"
+  +"h1{font-size:26px;line-height:1.15;margin:0 0 4px;color:#0f766e}"
+  +".sub{font-size:14px;color:#5b6472;margin:0 0 16px;font-weight:600}"
+  +"h2{font-size:12px;letter-spacing:.11em;text-transform:uppercase;color:#0f766e;margin:20px 0 7px;"
+  +"border-bottom:2px solid #0f766e;padding-bottom:4px}"
+  +"ul{margin:0;padding-left:22px}li{margin-bottom:5px}.ican li{font-weight:700}"
+  +".term{background:#f4f8fb;border-left:5px solid #0f766e;border-radius:0 8px 8px 0;padding:7px 11px;"
+  +"margin:0 0 7px}.term b{display:block;font-size:16px}.term span{color:#5b6472;font-size:13.5px}"
+  +".std{background:#f4f8fb;border-radius:9px;padding:10px 13px;margin:0 0 8px}"
+  +".std b{color:#0f766e}.std i{display:block;color:#4a5462;font-style:normal;font-size:13.5px}"
+  +".wkinfo{background:#f4f8fb;border-left:5px solid #0f766e;border-radius:0 10px 10px 0;"
+  +"padding:12px 15px;margin:0 0 18px}.wkinfo p{margin:0 0 5px;font-size:14px;color:#33404f}"
+  +".meter{height:9px;background:#e7ecf3;border-radius:99px;overflow:hidden;margin:6px 0 16px}"
+  +".meter i{display:block;height:100%;background:#0f766e;width:0;transition:width .2s}"
+  +".ckrow{display:flex;gap:11px;align-items:flex-start;border:1px solid #e3e8f0;border-radius:10px;"
+  +"padding:10px 13px;margin:0 0 8px;background:#fff}"
+  +".ckrow.done{background:#f2f9f5;border-color:#bfe3cd}"
+  +".ckrow.done .t{text-decoration:line-through;color:#5b6472}"
+  +".ckrow input{width:21px;height:21px;margin:1px 0 0;flex:none;accent-color:#0f766e}"
+  +".ckrow .t{font-size:15.5px;font-weight:700;color:#14181f;line-height:1.3}"
+  +".ckrow .m{display:block;font-size:13px;font-weight:400;color:#5b6472;margin-top:2px}"
+  +".ckrow .kind{display:inline-block;font-size:9.5px;font-weight:800;letter-spacing:.05em;"
+  +"text-transform:uppercase;background:#eef2f8;color:#39404c;border-radius:4px;padding:1px 6px;"
+  +"margin-right:6px;vertical-align:1px}"
+  +".tools{display:flex;gap:9px;align-items:center;margin:14px 0 0;flex-wrap:wrap}"
+  +".tools button{background:#fff;border:1px solid #cdd6e2;border-radius:99px;font:inherit;"
+  +"font-size:13px;font-weight:700;color:#39404c;padding:5px 13px;cursor:pointer}"
+  +"#n{font-size:13.5px;font-weight:700;color:#0f766e}"
+  +".note{font-size:13px;color:#5b6472;border-top:1px solid #e3e8f0;margin-top:20px;padding-top:10px}"
+  +"@media print{.tools{display:none}}";
+const CCCHKJS="(function(){var K='aos.week.'+(document.body.getAttribute('data-week')||'x');"
+  +"var b=[].slice.call(document.querySelectorAll('input.ck'));"
+  +"function S(){try{return JSON.parse(localStorage.getItem(K)||'{}')}catch(e){return {}}}"
+  +"function C(){var d=b.filter(function(x){return x.checked}).length;"
+  +"var n=document.getElementById('n'),bar=document.getElementById('bar');"
+  +"if(n)n.textContent=d+' of '+b.length+' done';"
+  +"if(bar)bar.style.width=(b.length?Math.round(d/b.length*100):0)+'%';"
+  +"b.forEach(function(x){x.parentNode.className=x.checked?'ckrow done':'ckrow'})}"
+  +"var s=S();b.forEach(function(x,i){if(s[i])x.checked=true;"
+  +"x.addEventListener('change',function(){var o=S();o[i]=x.checked?1:0;"
+  +"try{localStorage.setItem(K,JSON.stringify(o))}catch(e){}C()})});"
+  +"var r=document.getElementById('reset');if(r)r.addEventListener('click',function(){"
+  +"b.forEach(function(x){x.checked=false});try{localStorage.removeItem(K)}catch(e){}C()});C()})();";
+
+function ccPage(title,sub,body,week){
+  return '<!DOCTYPE html>\n<html><head><meta charset="utf-8"/><title>'+cx(title)+'</title>'
+    +'<style>'+CCPAGECSS+'</style></head><body'+(week?' data-week="'+cx(week)+'"':'')+'>'
+    +'<h1>'+cx(title)+'</h1><p class="sub">'+cx(sub)+'</p>'+body
+    +(week?'<script>'+CCCHKJS+'<\/script>':'')+'</body></html>';
+}
+/* what a week is about, in the words the calendar already uses */
+function ccWeekInfo(w){
+  const c=(PACE.trimmed.plan||[]).find(x=>x.week===w)||{};
+  const rows=planRows(w), out=[];
+  const units=[...new Set(rows.map(r=>r.unit).filter(Boolean))];
+  out.push('<b>Week '+w+' &middot; '+cx(pdt(c.start))+' &ndash; '+cx(pdt(c.end))+'</b> &middot; '
+    +cx(PACE.label)+(units.length?' &middot; '+cx(RES.unitword+' '+units.join(', ')):''));
+  const bits=[];
+  if(c.schoolDays!=null) bits.push(c.schoolDays+' student days');
+  if(c.noSchoolDays) bits.push(c.noSchoolDays+' day'+(c.noSchoolDays===1?'':'s')+' off');
+  (c.windows||[]).forEach(x=>bits.push(cx(x.test)));
+  if(c.quarterStart) bits.push('a new quarter starts');
+  if(c.quarterEnd) bits.push('the quarter ends');
+  if(bits.length) out.push(bits.join(' &middot; ')+'.');
+  return out;
+}
+function ccStdsOf(w){
+  const s=new Set();
+  planRows(w).forEach(r=>{ const L=PLES.find(x=>x.ref===r.ref); (L&&L.std||[]).forEach(c=>s.add(c)); });
+  return [...s];
+}
+function ccKindWord(x){ return rdTypeWord(x); }
+
+/* ---- one week -> the files and the folder tree ---- */
+function ccWeek(w, files, tree, seq){
+  const rows=planRows(w).filter(r=>r.ref || (r.res||[]).length || r.notes);
+  if(!rows.length) return false;
+  const asg=asgList(w), H=(typeof hdData==='function')?hdData():null;
+  const inAsg=new Set();
+  asg.forEach(a=>(a.items||[]).forEach(x=>inAsg.add(resKey(x))));
+  const kids=[], id=n=>'W'+w+'_'+n;
+  const ck=[];
+
+  /* the lesson header pages come first in the checklist, in row order */
+  rows.forEach((r,ri)=>{
+    if(!r.ref) return;
+    const L=H&&H.lessons?H.lessons[r.ref]:null;
+    const e=(typeof hdEdits==='function')?hdEdits(r.ref):{};
+    const title=r.ref+' '+((L&&L.t)||TITLEBY[r.ref]||'');
+    let b='';
+    if(L){
+      const objs=(e.obj!=null?e.obj.split('\n'):(L.obj||[])).filter(x=>String(x).trim());
+      const icans=(e.ican!=null?e.ican.split('\n'):(L.ican||[])).filter(x=>String(x).trim());
+      if(objs.length||icans.length){
+        b+='<h2>What we are learning</h2>';
+        if(objs.length) b+='<ul>'+objs.map(x=>'<li>'+cx(x)+'</li>').join('')+'</ul>';
+        if(icans.length) b+='<ul class="ican">'+icans.map(x=>'<li>'+cx(x)+'</li>').join('')+'</ul>';
+      }
+      if((L.vocab||[]).length)
+        b+='<h2>Vocabulary</h2>'+L.vocab.map((v,i)=>{
+          const d=(e['v'+i]!=null?e['v'+i]:(v[1]||''));
+          return '<div class="term"><b>'+cx(v[0])+'</b>'+(d?'<span>'+cx(d)+'</span>':'')+'</div>';
+        }).join('');
+      if((L.std||[]).length)
+        b+='<h2>Arkansas standard'+(L.std.length>1?'s':'')+'</h2>'
+          +L.std.map(s=>'<div class="std"><b>'+(s[2]?'&#9733; ':'')+cx(s[0])+'</b><i>'+cx(s[1])
+            +(s[3]?' (part of the standard)':'')+'</i></div>').join('');
+      const desc=e.desc!=null?e.desc:(L.desc||'');
+      if(desc) b+='<h2>About this lesson</h2><p>'+cx(desc)+'</p>';
+    }
+    if(r.notes) b+='<h2>Note from your teacher</h2><p>'+cx(r.notes)+'</p>';
+    if(!b) b='<p>'+cx(title)+'</p>';
+    b+='<p class="note">'+cx(PACE.label)+' &middot; week '+w+'</p>';
+    const f='web/'+id('les'+ri)+'.html';
+    files.push({name:f, data:ccPage('Lesson header: '+title,
+      (L?(RES.unitword+' '+L.u+(L.ut?' · '+L.ut:'')):'')+' · Week '+w, b)});
+    kids.push({t:'Lesson header: '+title, r:id('les'+ri), type:'webcontent', href:f,
+               d:'Objective, I can statements, vocabulary and the standard for '+title+'.'});
+    ck.push(['read','Lesson header: '+title,'objective, vocabulary and the standard']);
+  });
+
+  /* the assignments you marked */
+  asg.forEach((a,ai)=>{
+    const links=(a.items||[]).filter(x=>x.url).map(x=>'<li><a href="'+cx(x.url)
+      +'" target="_blank">'+cx((x.num?x.num+' — ':'')+x.title)+'</a></li>').join('');
+    const plain=(a.items||[]).filter(x=>!x.url).map(x=>'<li>'+cx(x.title)+'</li>').join('');
+    const body='<p><b>'+cx(a.type||'Assignment')+'</b>'+(a.due?' &middot; due '+cx(a.due):'')+'</p>'
+      +((links||plain)?'<ul>'+links+plain+'</ul>':'')
+      +(/ixl/i.test(a.type||'')?'<p><i>Teacher note: for SmartScore passback, rebuild this with '
+        +'Add Materials &rarr; IXL Learning (LTI 1.3) and link these skills.</i></p>':'');
+    const f=id('asg'+ai)+'/assignment_settings.xml';
+    files.push({name:f, data:'<?xml version="1.0" encoding="UTF-8"?>\n'
+      +'<assignment xmlns="http://www.imsglobal.org/xsd/imscc_extensions/assignment"'
+      +' xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"'
+      +' xsi:schemaLocation="http://www.imsglobal.org/xsd/imscc_extensions/assignment'
+      +' http://www.imsglobal.org/profile/cc/ccv1p2/ccv1p2_assignment_v1p0.xsd"'
+      +' identifier="'+id('asg'+ai)+'_a">\n'
+      +'  <title>'+cx(a.name)+'</title>\n'
+      +'  <text texttype="text/html">'+ccCdata(body)+'</text>\n'
+      +'  <gradable points_possible="100">true</gradable>\n'
+      +'  <submission_formats><format type="html"/><format type="file"/></submission_formats>\n'
+      +'</assignment>'});
+    kids.push({t:a.name, r:id('asg'+ai), type:'assignment_xmlv1p0', href:f,
+               d:(a.type||'Assignment')+(a.due?' · due '+a.due:'')+' · '
+                 +(a.items||[]).length+' item'+((a.items||[]).length===1?'':'s')+'.'});
+    ck.push(['do',a.name,(a.type||'')+(a.due?' · due '+a.due:'')]);
+  });
+
+  /* everything else on the week, as its own link */
+  let li=0;
+  rows.forEach(r=>(r.res||[]).forEach(x=>{
+    if(!x.url || inAsg.has(resKey(x))) return;
+    const f=id('lnk'+li)+'/weblink.xml';
+    const t=(x.num?x.num+' — ':'')+x.title;
+    files.push({name:f, data:'<?xml version="1.0" encoding="UTF-8"?>\n'
+      +'<webLink xmlns="http://www.imsglobal.org/xsd/imsccv1p2/imswl_v1p2"'
+      +' xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"'
+      +' xsi:schemaLocation="http://www.imsglobal.org/xsd/imsccv1p2/imswl_v1p2'
+      +' http://www.imsglobal.org/profile/cc/ccv1p2/ccv1p2_imswl_v1p2.xsd">\n'
+      +'  <title>'+cx(t)+'</title>\n'
+      +'  <url href="'+cx(x.url)+'" target="_blank" windowFeatures=""/>\n'
+      +'</webLink>'});
+    kids.push({t:t, r:id('lnk'+li), type:'imswl_xmlv1p2', href:f,
+               d:(x.src||'')+' · '+ccKindWord(x)+(x.note?' · '+x.note:'')});
+    ck.push([ccKindWord(x)==='video'?'watch':(ccKindWord(x)==='skill'?'practice':'open'), t,
+             (x.src||'')+(x.num?' · '+x.num:'')]);
+    li++;
+  }));
+
+  /* the checklist goes first, and lists everything above in the same order */
+  const stds=ccStdsOf(w);
+  const chkBody='<div class="wkinfo">'+ccWeekInfo(w).map(x=>'<p>'+x+'</p>').join('')
+    +(stds.length?'<p><b>Standards this week:</b> '+cx(stds.join(', '))+'</p>':'')
+    +'</div><h2>Work through the week</h2><p id="n"></p><div class="meter"><i id="bar"></i></div>'
+    + ck.map(([k,t,m])=>'<label class="ckrow"><input type="checkbox" class="ck"/>'
+        +'<span class="t"><span class="kind">'+cx(k)+'</span>'+cx(t)
+        +(m?'<span class="m">'+cx(m)+'</span>':'')+'</span></label>').join('')
+    +'<div class="tools"><button type="button" id="reset">Clear the ticks</button>'
+    +'<span style="font-size:12.5px;color:#5b6472">Ticks are kept in this browser, for you only.'
+    +'</span></div>';
+  const cf='web/'+id('checklist')+'.html';
+  files.push({name:cf, data:ccPage('Week '+w+' checklist',
+    ccWeekInfo(w)[0].replace(/<[^>]+>/g,''), chkBody, 'w'+w+'_'+seq)});
+  kids.unshift({t:'START HERE — Week '+w+' checklist', r:id('checklist'), type:'webcontent',
+                href:cf, d:'Everything for week '+w+' in order, with tick boxes.'});
+
+  const c=(PACE.trimmed.plan||[]).find(x=>x.week===w)||{};
+  tree.push({t:'Week '+w+' · '+pdt(c.start)+' – '+pdt(c.end), kids:kids});
+  return true;
+}
+
+function ccBuild(fromW,toW){
+  const files=[], tree=[];
+  let n=0;
+  for(let w=fromW; w<=toW; w++) if(ccWeek(w, files, tree, ++n)) {}
+  if(!tree.length) return null;
+  /* a read-me at the root */
+  const rf='web/read_me.html';
+  files.push({name:rf, data:ccPage('About this import',
+    PACE.label+' · weeks '+fromW+'–'+toW,
+    '<div class="wkinfo"><p>Exported from the Arkansas &harr; Reveal Math map. Each week is a '
+    +'folder: the checklist first, then a lesson header page per lesson, your assignments, then '
+    +'the rest of the resources as links.</p>'
+    +'<p><b>Due dates are not part of Common Cartridge</b> — set them after importing.</p>'
+    +'<p><b>IXL links here are plain links.</b> For SmartScore passback, rebuild those assignments '
+    +'with Add Materials &rarr; IXL Learning (LTI 1.3); the assignment names list the exact skills.'
+    +'</p></div>')});
+  const items=[{t:'About this import', r:'READ_ME', type:'webcontent', href:rf,
+                d:'What this cartridge contains and what to do after importing.'}]
+    .concat(tree);
+  const flat=[];
+  function itemXML(it,d){
+    const pad=' '.repeat(d);
+    if(it.kids){
+      return pad+'<item identifier="F'+Math.abs(hashStr(it.t))+'">\n'
+        +pad+'  <title>'+cx(it.t)+'</title>\n'
+        + it.kids.map(k=>itemXML(k,d+2)).join('')
+        + pad+'</item>\n';
+    }
+    flat.push(it);
+    return pad+'<item identifier="I'+it.r+'" identifierref="'+it.r+'">\n'
+      +pad+'  <title>'+cx(it.t)+'</title>\n'+pad+'</item>\n';
+  }
+  const org=items.map(i=>itemXML(i,8)).join('');
+  const res=flat.map(it=>'    <resource identifier="'+it.r+'" type="'+it.type+'"'
+      +(it.type==='webcontent'?' href="'+it.href+'"':'')+'>\n'
+      +(it.d?'      <metadata><lom:lom><lom:general><lom:description>'
+        +'<lom:string language="en-US">'+cx(it.d)+'</lom:string></lom:description>'
+        +'</lom:general></lom:lom></metadata>\n':'')
+      +'      <file href="'+it.href+'"/>\n    </resource>\n').join('');
+  const title=PACE.label+' · weeks '+fromW+'–'+toW;
+  files.unshift({name:'imsmanifest.xml', data:'<?xml version="1.0" encoding="UTF-8"?>\n'
+    +'<manifest identifier="AOS_'+String(PACE.label).replace(/[^A-Za-z0-9]+/g,'_')+'_W'+fromW+'_'+toW+'"\n'
+    +'  xmlns="http://www.imsglobal.org/xsd/imsccv1p2/imscp_v1p1"\n'
+    +'  xmlns:lom="http://ltsc.ieee.org/xsd/imsccv1p2/LOM/resource"\n'
+    +'  xmlns:lomimscc="http://ltsc.ieee.org/xsd/imsccv1p2/LOM/manifest"\n'
+    +'  xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"\n'
+    +'  xsi:schemaLocation="http://www.imsglobal.org/xsd/imsccv1p2/imscp_v1p1 '
+    +'http://www.imsglobal.org/profile/cc/ccv1p2/ccv1p2_imscp_v1p2_v1p0.xsd '
+    +'http://ltsc.ieee.org/xsd/imsccv1p2/LOM/resource '
+    +'http://www.imsglobal.org/profile/cc/ccv1p2/LOM/ccv1p2_lomresource_v1p0.xsd '
+    +'http://ltsc.ieee.org/xsd/imsccv1p2/LOM/manifest '
+    +'http://www.imsglobal.org/profile/cc/ccv1p2/LOM/ccv1p2_lommanifest_v1p0.xsd">\n'
+    +'  <metadata>\n    <schema>IMS Common Cartridge</schema>\n'
+    +'    <schemaversion>1.2.0</schemaversion>\n'
+    +'    <lomimscc:lom><lomimscc:general><lomimscc:title><lomimscc:string language="en-US">'
+    +cx(title)+'</lomimscc:string></lomimscc:title></lomimscc:general></lomimscc:lom>\n'
+    +'  </metadata>\n'
+    +'  <organizations>\n    <organization identifier="ORG1" structure="rooted-hierarchy">\n'
+    +'      <item identifier="ROOT">\n'+org+'      </item>\n'
+    +'    </organization>\n  </organizations>\n'
+    +'  <resources>\n'+res+'  </resources>\n</manifest>'});
+  return {blob:ccZip(files), weeks:tree.length, items:flat.length,
+          name:String(PACE.label).replace(/[^A-Za-z0-9]+/g,'_')+'_W'
+            +(fromW<10?'0':'')+fromW+(toW!==fromW?('-W'+(toW<10?'0':'')+toW):'')+'.imscc'};
+}
+function hashStr(s){ let h=0; for(let i=0;i<s.length;i++) h=(h*31+s.charCodeAt(i))|0; return h; }
+function ccDownload(fromW,toW){
+  const out=ccBuild(fromW,toW);
+  if(!out) return mvToast(fromW===toW?('Week '+fromW+' has nothing in it yet')
+    :('weeks '+fromW+'–'+toW+' have nothing in them yet'));
+  const a=document.createElement('a');
+  a.href=URL.createObjectURL(out.blob); a.download=out.name;
+  document.body.appendChild(a); a.click(); a.remove();
+  setTimeout(()=>URL.revokeObjectURL(a.href),4000);
+  mvToast(out.name+' — '+out.weeks+' week'+(out.weeks===1?'':'s')+', '+out.items
+    +' materials. Import with Resources → Import.');
+  return out;
+}
+function ccDialog(){
+  const ws=(PACE.trimmed.plan||[]).map(c=>c.week);
+  const now=(typeof currentWeek==='function')?currentWeek():ws[0];
+  const opts=sel=>ws.map(w=>'<option value="'+w+'"'+(w===sel?' selected':'')+'>Week '+w+'</option>').join('');
+  const mask=document.createElement('div'); mask.className='ccdlg';
+  mask.innerHTML='<div class="ccbox"><h3>Export to Schoology</h3>'
+    +'<p>One folder per week, each starting with a checklist, then a lesson header page per lesson, '
+    +'your marked assignments, and the rest of the resources as links. Import in Schoology with '
+    +'<b>Resources &rarr; Import</b>, then add it to a course.</p>'
+    +'<div class="grid"><label>From<select id="ccfrom">'+opts(now)+'</select></label>'
+    +'<label>To<select id="ccto">'+opts(Math.min(now+8,ws[ws.length-1]))+'</select></label>'
+    +'<button type="button" class="btn primary" id="ccgo">Build the cartridge</button>'
+    +'<button type="button" class="btn" id="ccx">Close</button></div>'
+    +'<p class="msg" id="ccmsg">Due dates are not part of Common Cartridge — set them after importing.</p>'
+    +'</div>';
+  document.body.appendChild(mask);
+  const q=id=>mask.querySelector('#'+id);
+  mask.addEventListener('click',e=>{ if(e.target===mask) mask.remove(); });
+  q('ccx').addEventListener('click',()=>mask.remove());
+  q('ccgo').addEventListener('click',()=>{
+    const a=+q('ccfrom').value, b=+q('ccto').value;
+    if(b<a) return q('ccmsg').textContent='the second week has to come after the first';
+    q('ccmsg').textContent='building…';
+    setTimeout(()=>{ const out=ccDownload(a,b);
+      q('ccmsg').textContent=out?('Done — '+out.name):'those weeks are empty'; },30);
+  });
+}
 /* ================= where am I in the year ================= */
 function paceWeeks(){ return (PACE.trimmed.plan||[]).map(c=>({w:c.week,start:c.start,end:c.end})); }
 function todayISO(){
@@ -8783,6 +10163,8 @@ function planWeekBodyHTML(w){
         + (DISTRICT ? '<button type="button" class="btn tiny pfilld">prefill from district</button>' : '')
         + (rows.length?'<button type="button" class="btn tiny danger pclear">clear week</button>':'')
         + '<span class="grow"></span>'
+        + (rows.length?'<button type="button" class="ccbtn ccweek" data-w="'+w+'">'
+           +'&#11015; Cartridge</button>':'')
         + (rows.length?'<button type="button" class="btn primary psave">Save this week</button>':'')
         + '</div>');
 }
@@ -8892,6 +10274,8 @@ _on(document,'click', function(e){
     cbs.forEach(c=>{ c.checked=on; const r=RDLIST[+c.dataset.i];
       if(r){ if(on) RDSEL.set(rdKey(r),r); else RDSEL.delete(rdKey(r)); } });
     t.textContent = on ? 'Unselect all shown' : 'Select all shown'; rdSelBar(); return; }
+  if(t.classList.contains('ccweek')){ ccDownload(+t.dataset.w,+t.dataset.w); return; }
+  if(t.id==='ccexport'){ ccDialog(); return; }
   if(t.id==='wknowbtn'){ const w=currentWeek();
     if(w!=null && !jumpToWeek(w,true)) mvToast('Week '+w+' is filtered out — clear the search first');
     return; }
@@ -9067,6 +10451,7 @@ function render(){
      +(DISTRICT?'<button type="button" class="btn" id="planfilldist">Prefill the year from the district pacing</button>':'')
      +'<button type="button" class="btn" id="plansaveall">'+(Object.keys(PLAN.weeks).some(w=>planRows(w).length&&!weekSaved(w))?'Save all weeks':'Reopen all weeks for editing')+'</button>'
      +'<button type="button" class="btn" id="plandl">Download my plan</button>'
+     +'<button type="button" class="btn" id="ccexport">Export to Schoology (.imscc)</button>'
      +'<button type="button" class="btn" id="planup">Load a saved plan</button>'
      +'<input type="file" id="planfile" accept="application/json,.json" hidden>'
      +'<button type="button" class="btn danger" id="planwipe">Clear everything</button>'
