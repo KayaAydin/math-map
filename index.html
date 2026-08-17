@@ -1994,6 +1994,18 @@ function ccPlain(h){
     .replace(/&quot;/g,'"').replace(/&apos;/g,"'")
     .replace(/&lt;/g,'<').replace(/&gt;/g,'>').replace(/&amp;/g,'&').trim();
 }
+/* a file name a human can read, and a zip and an LMS can both cope with */
+function ccSlug(t,max){
+  let s=ccPlain(t).replace(/[\\\/:*?"<>|#%&{}$!`'+=@~^\[\]]+/g,' ')
+    .replace(/[\x00-\x1F\x7F]/g,'').replace(/\s+/g,' ').trim();
+  if(max && s.length>max) s=s.slice(0,max).replace(/[\s\-·]+$/,'').trim();
+  return s||'page';
+}
+function ccFileName(files,base,ext){
+  let n=base+ext, i=2;
+  while(files.some(f=>String(f.name).toLowerCase()===n.toLowerCase())) n=base+' ('+(i++)+')'+ext;
+  return n;
+}
 function ccCdata(html){ return '<![CDATA['+String(html||'').replace(/\]\]>/g,']]&gt;')+']]>'; }
 const CCPAGECSS="body{margin:0;padding:22px;font:400 15px/1.5 'Segoe UI',system-ui,-apple-system,"
   +"Arial,sans-serif;color:#14181f;background:#fff}"
@@ -2130,7 +2142,8 @@ function ccWeek(w, files, tree, seq){
     if(r.notes) b+='<h2>Note from your teacher</h2><p>'+cx(r.notes)+'</p>';
     if(!b) b='<p>'+cx(title)+'</p>';
     b+='<p class="note">'+cx(PACE.label)+' &middot; week '+w+'</p>';
-    const f=id('les'+ri)+'.html';   /* flat at the root: one self-contained file, no web/ folder */
+    /* flat at the root, one self-contained file, named the way the lesson is named */
+    const f=ccFileName(files,'W'+w+' '+ccSlug(title,70)+' - lesson overview','.html');
     files.push({name:f, data:ccPage(title,
       (L?(RES.unitword+' '+L.u+(L.ut?' · '+L.ut:'')):'')+' · Week '+w, b)});
     kids.push({t:title, r:id('les'+ri), type:'webcontent', href:f,
@@ -2199,7 +2212,7 @@ function ccWeek(w, files, tree, seq){
     +'<div class="tools"><button type="button" id="reset">Clear the ticks</button>'
     +'<span style="font-size:12.5px;color:#5b6472">Ticks are kept in this browser, for you only.'
     +'</span></div>';
-  const cf=id('checklist')+'.html';   /* flat at the root, one self-contained file */
+  const cf=ccFileName(files,'W'+w+' checklist - start here','.html');
   files.push({name:cf, data:ccPage('Week '+w+' checklist',
     ccPlain(ccWeekInfo(w)[0]), chkBody, 'w'+w+'_'+seq)});
   kids.unshift({t:'START HERE — Week '+w+' checklist', r:id('checklist'), type:'webcontent',
@@ -2216,7 +2229,7 @@ function ccBuild(fromW,toW){
   for(let w=fromW; w<=toW; w++) if(ccWeek(w, files, tree, ++n)) {}
   if(!tree.length) return null;
   /* a read-me at the root */
-  const rf='read_me.html';
+  const rf='About this import - read me first.html';
   files.push({name:rf, data:ccPage('About this import',
     PACE.label+' · weeks '+fromW+'–'+toW,
     '<div class="wkinfo"><p>Exported from the Arkansas &harr; Reveal Math map. Each week is a '
@@ -2247,11 +2260,11 @@ function ccBuild(fromW,toW){
   }
   const org=items.map(i=>itemXML(i,8)).join('');
   const res=flat.map(it=>'    <resource identifier="'+it.r+'" type="'+it.type+'"'
-      +(it.type==='webcontent'?' href="'+it.href+'"':'')+'>\n'
+      +(it.type==='webcontent'?' href="'+cx(it.href)+'"':'')+'>\n'
       +(it.d?'      <metadata><lom:lom><lom:general><lom:description>'
         +'<lom:string language="en-US">'+cx(it.d)+'</lom:string></lom:description>'
         +'</lom:general></lom:lom></metadata>\n':'')
-      +'      <file href="'+it.href+'"/>\n    </resource>\n').join('');
+      +'      <file href="'+cx(it.href)+'"/>\n    </resource>\n').join('');
   const title=PACE.label+' · weeks '+fromW+'–'+toW;
   files.unshift({name:'imsmanifest.xml', data:'<?xml version="1.0" encoding="UTF-8"?>\n'
     +'<manifest identifier="AOS_'+String(PACE.label).replace(/[^A-Za-z0-9]+/g,'_')+'_W'+fromW+'_'+toW+'"\n'
@@ -4378,6 +4391,18 @@ function ccPlain(h){
     .replace(/&quot;/g,'"').replace(/&apos;/g,"'")
     .replace(/&lt;/g,'<').replace(/&gt;/g,'>').replace(/&amp;/g,'&').trim();
 }
+/* a file name a human can read, and a zip and an LMS can both cope with */
+function ccSlug(t,max){
+  let s=ccPlain(t).replace(/[\\\/:*?"<>|#%&{}$!`'+=@~^\[\]]+/g,' ')
+    .replace(/[\x00-\x1F\x7F]/g,'').replace(/\s+/g,' ').trim();
+  if(max && s.length>max) s=s.slice(0,max).replace(/[\s\-·]+$/,'').trim();
+  return s||'page';
+}
+function ccFileName(files,base,ext){
+  let n=base+ext, i=2;
+  while(files.some(f=>String(f.name).toLowerCase()===n.toLowerCase())) n=base+' ('+(i++)+')'+ext;
+  return n;
+}
 function ccCdata(html){ return '<![CDATA['+String(html||'').replace(/\]\]>/g,']]&gt;')+']]>'; }
 const CCPAGECSS="body{margin:0;padding:22px;font:400 15px/1.5 'Segoe UI',system-ui,-apple-system,"
   +"Arial,sans-serif;color:#14181f;background:#fff}"
@@ -4514,7 +4539,8 @@ function ccWeek(w, files, tree, seq){
     if(r.notes) b+='<h2>Note from your teacher</h2><p>'+cx(r.notes)+'</p>';
     if(!b) b='<p>'+cx(title)+'</p>';
     b+='<p class="note">'+cx(PACE.label)+' &middot; week '+w+'</p>';
-    const f=id('les'+ri)+'.html';   /* flat at the root: one self-contained file, no web/ folder */
+    /* flat at the root, one self-contained file, named the way the lesson is named */
+    const f=ccFileName(files,'W'+w+' '+ccSlug(title,70)+' - lesson overview','.html');
     files.push({name:f, data:ccPage(title,
       (L?(RES.unitword+' '+L.u+(L.ut?' · '+L.ut:'')):'')+' · Week '+w, b)});
     kids.push({t:title, r:id('les'+ri), type:'webcontent', href:f,
@@ -4583,7 +4609,7 @@ function ccWeek(w, files, tree, seq){
     +'<div class="tools"><button type="button" id="reset">Clear the ticks</button>'
     +'<span style="font-size:12.5px;color:#5b6472">Ticks are kept in this browser, for you only.'
     +'</span></div>';
-  const cf=id('checklist')+'.html';   /* flat at the root, one self-contained file */
+  const cf=ccFileName(files,'W'+w+' checklist - start here','.html');
   files.push({name:cf, data:ccPage('Week '+w+' checklist',
     ccPlain(ccWeekInfo(w)[0]), chkBody, 'w'+w+'_'+seq)});
   kids.unshift({t:'START HERE — Week '+w+' checklist', r:id('checklist'), type:'webcontent',
@@ -4600,7 +4626,7 @@ function ccBuild(fromW,toW){
   for(let w=fromW; w<=toW; w++) if(ccWeek(w, files, tree, ++n)) {}
   if(!tree.length) return null;
   /* a read-me at the root */
-  const rf='read_me.html';
+  const rf='About this import - read me first.html';
   files.push({name:rf, data:ccPage('About this import',
     PACE.label+' · weeks '+fromW+'–'+toW,
     '<div class="wkinfo"><p>Exported from the Arkansas &harr; Reveal Math map. Each week is a '
@@ -4631,11 +4657,11 @@ function ccBuild(fromW,toW){
   }
   const org=items.map(i=>itemXML(i,8)).join('');
   const res=flat.map(it=>'    <resource identifier="'+it.r+'" type="'+it.type+'"'
-      +(it.type==='webcontent'?' href="'+it.href+'"':'')+'>\n'
+      +(it.type==='webcontent'?' href="'+cx(it.href)+'"':'')+'>\n'
       +(it.d?'      <metadata><lom:lom><lom:general><lom:description>'
         +'<lom:string language="en-US">'+cx(it.d)+'</lom:string></lom:description>'
         +'</lom:general></lom:lom></metadata>\n':'')
-      +'      <file href="'+it.href+'"/>\n    </resource>\n').join('');
+      +'      <file href="'+cx(it.href)+'"/>\n    </resource>\n').join('');
   const title=PACE.label+' · weeks '+fromW+'–'+toW;
   files.unshift({name:'imsmanifest.xml', data:'<?xml version="1.0" encoding="UTF-8"?>\n'
     +'<manifest identifier="AOS_'+String(PACE.label).replace(/[^A-Za-z0-9]+/g,'_')+'_W'+fromW+'_'+toW+'"\n'
@@ -6761,6 +6787,18 @@ function ccPlain(h){
     .replace(/&quot;/g,'"').replace(/&apos;/g,"'")
     .replace(/&lt;/g,'<').replace(/&gt;/g,'>').replace(/&amp;/g,'&').trim();
 }
+/* a file name a human can read, and a zip and an LMS can both cope with */
+function ccSlug(t,max){
+  let s=ccPlain(t).replace(/[\\\/:*?"<>|#%&{}$!`'+=@~^\[\]]+/g,' ')
+    .replace(/[\x00-\x1F\x7F]/g,'').replace(/\s+/g,' ').trim();
+  if(max && s.length>max) s=s.slice(0,max).replace(/[\s\-·]+$/,'').trim();
+  return s||'page';
+}
+function ccFileName(files,base,ext){
+  let n=base+ext, i=2;
+  while(files.some(f=>String(f.name).toLowerCase()===n.toLowerCase())) n=base+' ('+(i++)+')'+ext;
+  return n;
+}
 function ccCdata(html){ return '<![CDATA['+String(html||'').replace(/\]\]>/g,']]&gt;')+']]>'; }
 const CCPAGECSS="body{margin:0;padding:22px;font:400 15px/1.5 'Segoe UI',system-ui,-apple-system,"
   +"Arial,sans-serif;color:#14181f;background:#fff}"
@@ -6897,7 +6935,8 @@ function ccWeek(w, files, tree, seq){
     if(r.notes) b+='<h2>Note from your teacher</h2><p>'+cx(r.notes)+'</p>';
     if(!b) b='<p>'+cx(title)+'</p>';
     b+='<p class="note">'+cx(PACE.label)+' &middot; week '+w+'</p>';
-    const f=id('les'+ri)+'.html';   /* flat at the root: one self-contained file, no web/ folder */
+    /* flat at the root, one self-contained file, named the way the lesson is named */
+    const f=ccFileName(files,'W'+w+' '+ccSlug(title,70)+' - lesson overview','.html');
     files.push({name:f, data:ccPage(title,
       (L?(RES.unitword+' '+L.u+(L.ut?' · '+L.ut:'')):'')+' · Week '+w, b)});
     kids.push({t:title, r:id('les'+ri), type:'webcontent', href:f,
@@ -6966,7 +7005,7 @@ function ccWeek(w, files, tree, seq){
     +'<div class="tools"><button type="button" id="reset">Clear the ticks</button>'
     +'<span style="font-size:12.5px;color:#5b6472">Ticks are kept in this browser, for you only.'
     +'</span></div>';
-  const cf=id('checklist')+'.html';   /* flat at the root, one self-contained file */
+  const cf=ccFileName(files,'W'+w+' checklist - start here','.html');
   files.push({name:cf, data:ccPage('Week '+w+' checklist',
     ccPlain(ccWeekInfo(w)[0]), chkBody, 'w'+w+'_'+seq)});
   kids.unshift({t:'START HERE — Week '+w+' checklist', r:id('checklist'), type:'webcontent',
@@ -6983,7 +7022,7 @@ function ccBuild(fromW,toW){
   for(let w=fromW; w<=toW; w++) if(ccWeek(w, files, tree, ++n)) {}
   if(!tree.length) return null;
   /* a read-me at the root */
-  const rf='read_me.html';
+  const rf='About this import - read me first.html';
   files.push({name:rf, data:ccPage('About this import',
     PACE.label+' · weeks '+fromW+'–'+toW,
     '<div class="wkinfo"><p>Exported from the Arkansas &harr; Reveal Math map. Each week is a '
@@ -7014,11 +7053,11 @@ function ccBuild(fromW,toW){
   }
   const org=items.map(i=>itemXML(i,8)).join('');
   const res=flat.map(it=>'    <resource identifier="'+it.r+'" type="'+it.type+'"'
-      +(it.type==='webcontent'?' href="'+it.href+'"':'')+'>\n'
+      +(it.type==='webcontent'?' href="'+cx(it.href)+'"':'')+'>\n'
       +(it.d?'      <metadata><lom:lom><lom:general><lom:description>'
         +'<lom:string language="en-US">'+cx(it.d)+'</lom:string></lom:description>'
         +'</lom:general></lom:lom></metadata>\n':'')
-      +'      <file href="'+it.href+'"/>\n    </resource>\n').join('');
+      +'      <file href="'+cx(it.href)+'"/>\n    </resource>\n').join('');
   const title=PACE.label+' · weeks '+fromW+'–'+toW;
   files.unshift({name:'imsmanifest.xml', data:'<?xml version="1.0" encoding="UTF-8"?>\n'
     +'<manifest identifier="AOS_'+String(PACE.label).replace(/[^A-Za-z0-9]+/g,'_')+'_W'+fromW+'_'+toW+'"\n'
@@ -9146,6 +9185,18 @@ function ccPlain(h){
     .replace(/&quot;/g,'"').replace(/&apos;/g,"'")
     .replace(/&lt;/g,'<').replace(/&gt;/g,'>').replace(/&amp;/g,'&').trim();
 }
+/* a file name a human can read, and a zip and an LMS can both cope with */
+function ccSlug(t,max){
+  let s=ccPlain(t).replace(/[\\\/:*?"<>|#%&{}$!`'+=@~^\[\]]+/g,' ')
+    .replace(/[\x00-\x1F\x7F]/g,'').replace(/\s+/g,' ').trim();
+  if(max && s.length>max) s=s.slice(0,max).replace(/[\s\-·]+$/,'').trim();
+  return s||'page';
+}
+function ccFileName(files,base,ext){
+  let n=base+ext, i=2;
+  while(files.some(f=>String(f.name).toLowerCase()===n.toLowerCase())) n=base+' ('+(i++)+')'+ext;
+  return n;
+}
 function ccCdata(html){ return '<![CDATA['+String(html||'').replace(/\]\]>/g,']]&gt;')+']]>'; }
 const CCPAGECSS="body{margin:0;padding:22px;font:400 15px/1.5 'Segoe UI',system-ui,-apple-system,"
   +"Arial,sans-serif;color:#14181f;background:#fff}"
@@ -9282,7 +9333,8 @@ function ccWeek(w, files, tree, seq){
     if(r.notes) b+='<h2>Note from your teacher</h2><p>'+cx(r.notes)+'</p>';
     if(!b) b='<p>'+cx(title)+'</p>';
     b+='<p class="note">'+cx(PACE.label)+' &middot; week '+w+'</p>';
-    const f=id('les'+ri)+'.html';   /* flat at the root: one self-contained file, no web/ folder */
+    /* flat at the root, one self-contained file, named the way the lesson is named */
+    const f=ccFileName(files,'W'+w+' '+ccSlug(title,70)+' - lesson overview','.html');
     files.push({name:f, data:ccPage(title,
       (L?(RES.unitword+' '+L.u+(L.ut?' · '+L.ut:'')):'')+' · Week '+w, b)});
     kids.push({t:title, r:id('les'+ri), type:'webcontent', href:f,
@@ -9351,7 +9403,7 @@ function ccWeek(w, files, tree, seq){
     +'<div class="tools"><button type="button" id="reset">Clear the ticks</button>'
     +'<span style="font-size:12.5px;color:#5b6472">Ticks are kept in this browser, for you only.'
     +'</span></div>';
-  const cf=id('checklist')+'.html';   /* flat at the root, one self-contained file */
+  const cf=ccFileName(files,'W'+w+' checklist - start here','.html');
   files.push({name:cf, data:ccPage('Week '+w+' checklist',
     ccPlain(ccWeekInfo(w)[0]), chkBody, 'w'+w+'_'+seq)});
   kids.unshift({t:'START HERE — Week '+w+' checklist', r:id('checklist'), type:'webcontent',
@@ -9368,7 +9420,7 @@ function ccBuild(fromW,toW){
   for(let w=fromW; w<=toW; w++) if(ccWeek(w, files, tree, ++n)) {}
   if(!tree.length) return null;
   /* a read-me at the root */
-  const rf='read_me.html';
+  const rf='About this import - read me first.html';
   files.push({name:rf, data:ccPage('About this import',
     PACE.label+' · weeks '+fromW+'–'+toW,
     '<div class="wkinfo"><p>Exported from the Arkansas &harr; Reveal Math map. Each week is a '
@@ -9399,11 +9451,11 @@ function ccBuild(fromW,toW){
   }
   const org=items.map(i=>itemXML(i,8)).join('');
   const res=flat.map(it=>'    <resource identifier="'+it.r+'" type="'+it.type+'"'
-      +(it.type==='webcontent'?' href="'+it.href+'"':'')+'>\n'
+      +(it.type==='webcontent'?' href="'+cx(it.href)+'"':'')+'>\n'
       +(it.d?'      <metadata><lom:lom><lom:general><lom:description>'
         +'<lom:string language="en-US">'+cx(it.d)+'</lom:string></lom:description>'
         +'</lom:general></lom:lom></metadata>\n':'')
-      +'      <file href="'+it.href+'"/>\n    </resource>\n').join('');
+      +'      <file href="'+cx(it.href)+'"/>\n    </resource>\n').join('');
   const title=PACE.label+' · weeks '+fromW+'–'+toW;
   files.unshift({name:'imsmanifest.xml', data:'<?xml version="1.0" encoding="UTF-8"?>\n'
     +'<manifest identifier="AOS_'+String(PACE.label).replace(/[^A-Za-z0-9]+/g,'_')+'_W'+fromW+'_'+toW+'"\n'
@@ -11414,20 +11466,26 @@ function lpDownloadXlsx(){
   <div class="nlfield"><label>Grade 7 pacing</label><select id="nlsrc7"></select></div>
   <div class="nlfield"><label>Grade 8 pacing</label><select id="nlsrc8"></select></div>
   <div class="nlfield"><label>Algebra 1 pacing</label><select id="nlsrca1"></select></div>
+  <div class="nlfield"><label>Paper</label><select id="nlorient">
+    <option value="portrait">Portrait</option><option value="landscape">Landscape</option>
+  </select></div>
   <div class="nlfield"><label>&nbsp;</label>
     <div class="nlactions" style="display:flex;gap:6px">
       <button type="button" class="btn primary" id="nlrun">Create newsletters</button>
       <button type="button" class="btn" id="nlprint">Print / PDF</button>
       <button type="button" class="btn" id="nlsave">Download .html</button>
+      <button type="button" class="btn" id="nlsaveeach">.html per class</button>
     </div></div>
 </div>
 <p class="nlpicks" id="nlpicks"></p>
 <p class="nlpicks"><label><input type="checkbox" id="nlfit" checked> Fit each class onto one page
   <span style="color:var(--muted)">(trims to four lessons, four standards, six links)</span></label></p>
+<p class="nlsecbar" id="nlsecbar"></p>
 <p class="nlnote" id="nlnotebar"></p>
 <div id="nlout"></div>
 </div></div></template>
 <script type="text/plain" data-js="nl">
+const NLXCSS="\n.nlsecbar{display:flex;flex-wrap:wrap;gap:4px 12px;align-items:center;font-size:12px;color:var(--ink2);\n  margin:0 0 6px}\n.nlsecbar .cap{font-weight:700;color:var(--muted);font-size:10px;letter-spacing:.07em;\n  text-transform:uppercase}\n.nlsecbar label{display:inline-flex;align-items:center;gap:5px;cursor:pointer}\n.nlsecbar button{background:var(--surface);border:1px solid var(--ring);border-radius:999px;\n  color:var(--ink2);font:inherit;font-size:11px;font-weight:700;padding:3px 10px;cursor:pointer}\n.nlsecbar button:hover{border-color:var(--accent);color:var(--accent)}\n.nlpg{display:flex;flex-wrap:wrap;gap:6px;justify-content:flex-end;margin:-4px 0 8px}\n.nlpb{background:#f4f6fa;border:1px solid #dfe4ec;border-radius:999px;color:#39404c;font:inherit;\n  font-size:10.5px;font-weight:700;padding:3px 10px;cursor:pointer}\n.nlpb:hover{border-color:var(--nlc);color:var(--nlc)}\n.nltoast{position:fixed;left:50%;bottom:26px;transform:translateX(-50%);z-index:400;\n  background:#151922;color:#fff;border-radius:999px;padding:9px 18px;font-size:12.5px;font-weight:700;\n  box-shadow:0 18px 40px -18px rgba(0,0,0,.7);opacity:0;transition:opacity .18s}\n.nltoast.on{opacity:1}\n/* --- landscape: the sheet is wider and shorter, so the whole page flows into three\n   balanced columns at the same size the portrait sheet uses --- */\nhtml[data-nlor=\"landscape\"] .nlcols,html[data-nlor=\"landscape\"] .nlcols.one{\n  display:block;column-count:3;column-gap:15px}\nhtml[data-nlor=\"landscape\"] .nlcols>div{display:contents}\nhtml[data-nlor=\"landscape\"] .nlcols .nlsec{break-inside:auto;margin:0 0 7px}\nhtml[data-nlor=\"landscape\"] .nlcols .nlsec>h3{break-after:avoid}\nhtml[data-nlor=\"landscape\"] .nlcols .nlsec>p:last-child{break-before:avoid}\nhtml[data-nlor=\"landscape\"] .nlcols .nlles,html[data-nlor=\"landscape\"] .nlcols .nlstd,\nhtml[data-nlor=\"landscape\"] .nlcols .nllink,html[data-nlor=\"landscape\"] .nlcols .nlrem,\nhtml[data-nlor=\"landscape\"] .nlcols .nlunit,html[data-nlor=\"landscape\"] .nlcols .nlwords,\nhtml[data-nlor=\"landscape\"] .nlcols .nlteach{break-inside:avoid}\nhtml[data-nlor=\"landscape\"] .nlpage .nlteach{min-height:.4in}\n.nlcols.one{grid-template-columns:1fr}\n@media print{\n  .nlpg,.nlsecbar,.nltoast{display:none!important}\n  #nlout.solo .nlpage:not(.only){display:none!important}\n  #nlout.solo .nlpage.only{break-after:auto}\n  html[data-nlor=\"landscape\"] .nlpage .nlmast h2{font-size:18pt}\n  html[data-nlor=\"landscape\"] .nlpage .nlmast .tag,\n  html[data-nlor=\"landscape\"] .nlpage .nlmast .wk{font-size:8pt}\n  html[data-nlor=\"landscape\"] .nlpage .nlmast{margin-bottom:8px}\n  html[data-nlor=\"landscape\"] .nlpage.dense .nlcols .nlsec{margin:0 0 5px}\n}\n";
 const NKEYS=['6','7','8','a1'];
 const NSRC=[['mine','My pacing — I enter it'],['trimmed','Recommended — Arkansas-required only'],
             ['district','District — Arkansas Online School'],['asWritten','As the Teacher Edition paces it']];
@@ -11461,6 +11519,151 @@ function nlItems(course,src,week){
   return {refs:(w&&w.refs)||[], extras:(w&&w.extras)||[], asg:[]};
 }
 
+
+/* ================= which sections go on the page ================= */
+const NLSECS=[['unit','Unit overview'],['les','Lessons'],['std','Standards'],['asg','Assignments'],
+  ['prac','Practice at home'],['voc','Vocabulary'],['ask','Questions to ask'],['rem','Reminders'],
+  ['cal','Calendar notes'],['teach','From your teacher']];
+let NLSECON=null;
+function nlSecLoad(){
+  if(NLSECON) return NLSECON;
+  let o=null; try{ o=JSON.parse(localStorage.getItem('armath.nl.sec')||'null'); }catch(e){}
+  NLSECON={}; NLSECS.forEach(s=>NLSECON[s[0]]=!o||o[s[0]]!==0);
+  return NLSECON;
+}
+function nlSecOn(k){ return !!nlSecLoad()[k]; }
+function nlSecSave(){
+  const o={}; NLSECS.forEach(s=>o[s[0]]=nlSecLoad()[s[0]]?1:0);
+  try{ localStorage.setItem('armath.nl.sec',JSON.stringify(o)); }catch(e){}
+}
+function nlSecBarHTML(){
+  const S=nlSecLoad();
+  return '<span class="cap">Sections</span>'
+    + NLSECS.map(s=>'<label><input type="checkbox" data-nlsec="'+s[0]+'"'+(S[s[0]]?' checked':'')
+        +'> '+s[1]+'</label>').join('')
+    + '<button type="button" id="nlsecall">All</button>'
+    + '<button type="button" id="nlsecnone">None</button>';
+}
+function nlOr(){
+  const s=document.getElementById('nlorient');
+  return (s&&s.value==='landscape')?'landscape':'portrait';
+}
+function nlOrApply(){
+  document.documentElement.setAttribute('data-nlor',nlOr());
+  try{ localStorage.setItem('armath.nl.orient',nlOr()); }catch(e){}
+}
+function nlToast(msg){
+  let t=document.getElementById('nltoast');
+  if(!t){ t=document.createElement('div'); t.id='nltoast'; t.className='nltoast';
+    document.body.appendChild(t); }
+  t.textContent=msg; t.classList.add('on');
+  clearTimeout(nlToast.t); nlToast.t=setTimeout(()=>t.classList.remove('on'),2600);
+}
+
+/* ================= one class at a time: print, .html, image ================= */
+function nlPageEl(c){ return document.querySelector('#nlout .nlpage[data-nlc="'+c+'"]'); }
+function nlFileBase(c){
+  const week=document.getElementById('nlweek').value;
+  return 'Math_Newsletter_W'+(week<10?'0':'')+week+'_'+String(LPBANK[c].tab).replace(/[^A-Za-z0-9]+/g,'_');
+}
+function nlStrip(h){
+  return String(h).replace(/ contenteditable="true"/g,'')
+    .replace(/<div class="nlpg[^"]*">[\s\S]*?<\/div>/g,'');
+}
+function nlCssDoc(){
+  return ':root{--ring:#dfe4ec;--grid:#e7ebf2;--accent:#1d4ed8;--muted:#6b7280;--ink:#151922;'
+    +'--ink2:#39404c;--plane:#fff;--surface:#fff}\n'+NLCSS+'\n'+NLXCSS
+    +'\nbody{margin:0;background:#eef1f6;font:400 14px/1.5 -apple-system,BlinkMacSystemFont,'
+    +'"Segoe UI",Roboto,Helvetica,Arial,sans-serif;color:#151922}'
+    +'.nlwrap{padding:18px;max-width:1180px;margin:0 auto}.nlteach{white-space:pre-wrap}'
+    +'.nlteach:empty{display:none}.nlteach:empty:before{content:""}'
+    +'\n@page{size:letter '+nlOr()+';margin:'+(nlOr()==='landscape'?'.36in':'.42in')+'}';
+}
+function nlDocHTML(inner,title){
+  return '<!doctype html><html lang="en" data-nlor="'+nlOr()+'"><head><meta charset="utf-8">'
+    +'<meta name="viewport" content="width=device-width,initial-scale=1">'
+    +'<title>'+nesc(title)+'</title><style>'+nlCssDoc()+'</style></head>'
+    +'<body><div class="nlwrap">'+nlStrip(inner)+'</div></body></html>';
+}
+function nlSaveBlob(blob,name){
+  const a=document.createElement('a'); a.href=URL.createObjectURL(blob); a.download=name;
+  document.body.appendChild(a); a.click(); a.remove();
+  setTimeout(()=>URL.revokeObjectURL(a.href),4000);
+}
+function nlDownloadOne(c){
+  const el=nlPageEl(c); if(!el) return nlToast('that class is not on the page');
+  const week=document.getElementById('nlweek').value;
+  nlSaveBlob(new Blob([nlDocHTML(el.outerHTML,LPBANK[c].tab+' — Week '+week+' newsletter')],
+    {type:'text/html'}), nlFileBase(c)+'.html');
+  nlToast(LPBANK[c].tab+' saved as its own .html');
+}
+function nlDownloadEach(){
+  const els=[...document.querySelectorAll('#nlout .nlpage[data-nlc]')];
+  if(!els.length) return nlToast('nothing to save yet');
+  els.forEach((el,i)=>setTimeout(()=>nlDownloadOne(el.dataset.nlc),i*350));
+  nlToast(els.length+' file'+(els.length===1?'':'s')+' — one per class');
+}
+function nlPrintNow(only){
+  const st=document.createElement('style'); st.id='nlprintcss';
+  st.textContent='@page{size:letter '+nlOr()+';margin:'+(nlOr()==='landscape'?'.36in':'.42in')+'}';
+  document.head.appendChild(st);
+  const out=document.getElementById('nlout');
+  if(only){ out.classList.add('solo'); const el=nlPageEl(only); if(el) el.classList.add('only'); }
+  const done=()=>{ const s=document.getElementById('nlprintcss'); if(s) s.remove();
+    out.classList.remove('solo');
+    out.querySelectorAll('.nlpage.only').forEach(n=>n.classList.remove('only')); };
+  const after=()=>{ window.removeEventListener('afterprint',after); setTimeout(done,60); };
+  window.addEventListener('afterprint',after);
+  setTimeout(()=>{ window.print(); setTimeout(done,2500); },40);
+}
+/* the page as a PNG: clone, wrap in an SVG foreignObject, draw it on a canvas */
+function nlPNG(el,scale){
+  return new Promise((res,rej)=>{
+    const r=el.getBoundingClientRect(), w=Math.ceil(r.width), h=Math.ceil(r.height);
+    const clone=el.cloneNode(true);
+    clone.querySelectorAll('.nlpg').forEach(n=>n.remove());
+    clone.querySelectorAll('[contenteditable]').forEach(n=>n.removeAttribute('contenteditable'));
+    clone.setAttribute('style',(el.getAttribute('style')||'')
+      +';width:'+w+'px;margin:0;box-shadow:none;border-radius:0');
+    const css=nlCssDoc()+'\n.nlteach:empty:before{content:""!important}'
+      +'\n.nlteach:empty{display:block!important}';
+    const body='<div xmlns="http://www.w3.org/1999/xhtml" class="nlwrap" '
+      +'style="padding:0;max-width:none;background:#fff">'
+      + new XMLSerializer().serializeToString(clone) + '</div>';
+    const svg='<svg xmlns="http://www.w3.org/2000/svg" width="'+Math.round(w*scale)+'" height="'
+      +Math.round(h*scale)+'" viewBox="0 0 '+w+' '+h+'">'
+      +'<style><![CDATA['+css+']]></style>'
+      +'<foreignObject x="0" y="0" width="100%" height="100%">'+body+'</foreignObject></svg>';
+    const img=new Image();
+    img.onload=()=>{
+      const cv=document.createElement('canvas');
+      cv.width=Math.round(w*scale); cv.height=Math.round(h*scale);
+      const g=cv.getContext('2d'); g.fillStyle='#fff'; g.fillRect(0,0,cv.width,cv.height);
+      g.drawImage(img,0,0,cv.width,cv.height);
+      cv.toBlob(b=>b?res(b):rej(new Error('no png')),'image/png');
+    };
+    img.onerror=()=>rej(new Error('the page could not be drawn'));
+    img.src='data:image/svg+xml;charset=utf-8,'+encodeURIComponent(svg);
+  });
+}
+function nlSavePNG(c){
+  const el=nlPageEl(c); if(!el) return;
+  nlPNG(el,2).then(b=>{ nlSaveBlob(b,nlFileBase(c)+'.png'); nlToast(LPBANK[c].tab+' saved as a PNG'); })
+    .catch(e=>nlToast('PNG failed — '+e.message));
+}
+function nlCopyPNG(c){
+  const el=nlPageEl(c); if(!el) return;
+  nlPNG(el,2).then(b=>{
+    if(!(window.ClipboardItem && navigator.clipboard && navigator.clipboard.write)){
+      nlSaveBlob(b,nlFileBase(c)+'.png');
+      return nlToast('this browser cannot copy images — saved the PNG instead');
+    }
+    navigator.clipboard.write([new ClipboardItem({'image/png':b})])
+      .then(()=>nlToast(LPBANK[c].tab+' copied — paste it into Schoology, email or Docs'))
+      .catch(()=>{ nlSaveBlob(b,nlFileBase(c)+'.png');
+        nlToast('the clipboard was blocked — saved the PNG instead'); });
+  }).catch(e=>nlToast('copy failed — '+e.message));
+}
 /* ---- one-page fit: the caps that keep a class on a single sheet ---- */
 function nlFit(){ const b=document.getElementById('nlfit'); return !b||b.checked; }
 function ncut(t,n){ t=String(t||''); if(!nlFit()||t.length<=n) return t;
@@ -11635,17 +11838,30 @@ function nlBuild(){
       mid='<p class="nlempty"><strong>No lessons are scheduled for this class this week under '
         +nesc(NSRCSHORT[src])+'.</strong>'+(src==='mine'?' Enter the week on the Pacing tab (My pacing), or '
         +'choose another pacing above, then press Create newsletters.':'')+'</p>'
-        +nlCalendar(c,cal)+nlTeacherBox(c,week);
+        +(nlSecOn('cal')?nlCalendar(c,cal):'')+(nlSecOn('teach')?nlTeacherBox(c,week):'');
     }else{
       /* a two-lesson week leaves the left column short — move the questions over to even it out */
       const light=refs.length<3;
-      mid='<div class="nlcols"><div>'+nlUnitBlock(c,refs)+nlLessonCards(c,refs)+nlStandards(c,refs)
-        +(light?nlAsk(c,refs)+nlTeacherBox(c,week):'')
-        +'</div><div>'+nlAssignments(it.asg)+nlPractice(c,refs)+nlWords(c,refs)+(light?'':nlAsk(c,refs))
-        +nlReminders(c,refs,cal,it.extras)+nlCalendar(c,cal)+(light?'':nlTeacherBox(c,week))
-        +'</div></div>';
+      const ask=nlSecOn('ask')?nlAsk(c,refs):'', tbx=nlSecOn('teach')?nlTeacherBox(c,week):'';
+      const Lc=[nlSecOn('unit')?nlUnitBlock(c,refs):'', nlSecOn('les')?nlLessonCards(c,refs):'',
+                nlSecOn('std')?nlStandards(c,refs):''].concat(light?[ask,tbx]:[]);
+      const Rc=[nlSecOn('asg')?nlAssignments(it.asg):'', nlSecOn('prac')?nlPractice(c,refs):'',
+                nlSecOn('voc')?nlWords(c,refs):'', light?'':ask,
+                nlSecOn('rem')?nlReminders(c,refs,cal,it.extras):'',
+                nlSecOn('cal')?nlCalendar(c,cal):'', light?'':tbx];
+      const L=Lc.join(''), R=Rc.join('');
+      mid = (L&&R) ? ('<div class="nlcols"><div>'+L+'</div><div>'+R+'</div></div>')
+          : (L||R) ? ('<div class="nlcols one"><div>'+(L||'')+'</div><div>'+(R||'')+'</div></div>')
+          : '<p class="nlempty">Every section is switched off — tick one above.</p>';
     }
-    html+='<section class="nlpage'+(refs.length>=5?' dense':'')+'" style="--nlc:'+NCOLOR[c]+'">'
+    html+='<section class="nlpage'+(refs.length>=5?' dense':'')+'" data-nlc="'+c+'"'
+      +' style="--nlc:'+NCOLOR[c]+'">'
+      +'<div class="nlpg">'
+        +'<button type="button" class="nlpb" data-nlprint="'+c+'">Print this class</button>'
+        +'<button type="button" class="nlpb" data-nlhtml="'+c+'">Save .html</button>'
+        +'<button type="button" class="nlpb" data-nlcopy="'+c+'">Copy image</button>'
+        +'<button type="button" class="nlpb" data-nlpng="'+c+'">Save PNG</button>'
+      +'</div>'
       +'<div class="nlmast"><div><p class="school">Arkansas Online School &middot; Mathematics</p>'
       +'<h2>'+nesc(B.tab)+'</h2><p class="tag">'+nesc(B.book)+' &middot; Week '+week+' newsletter for '
       +'families</p></div><div class="wk"><b>Week '+week+'</b>'+ndt(cal.start)+' &ndash; '+ndt(cal.end)
@@ -11666,21 +11882,9 @@ function nlBuild(){
 function nlDownload(){
   const week=document.getElementById('nlweek').value;
   const pages=document.getElementById('nlout').innerHTML;
-  const css=':root{--ring:#dfe4ec;--grid:#e7ebf2;--accent:#1d4ed8;--muted:#6b7280;--ink:#151922;'
-    +'--ink2:#39404c;--plane:#fff;--surface:#fff}\n'+NLCSS
-    +'\nbody{margin:0;background:#eef1f6;font:400 14px/1.5 -apple-system,BlinkMacSystemFont,'
-    +'"Segoe UI",Roboto,Helvetica,Arial,sans-serif;color:#151922}'
-    +'.nlwrap{padding:18px;max-width:1180px;margin:0 auto}.nlteach{white-space:pre-wrap}'
-    +'.nlteach:empty{display:none}.nlteach:empty:before{content:""}';
-  const doc='<!doctype html><html lang="en"><head><meta charset="utf-8">'
-    +'<meta name="viewport" content="width=device-width,initial-scale=1">'
-    +'<title>Arkansas Online School Math — Week '+week+' newsletters</title><style>'+css+'</style></head>'
-    +'<body><div class="nlwrap">'+pages.replace(/ contenteditable="true"/g,'')+'</div></body></html>';
-  const a=document.createElement('a');
-  a.href=URL.createObjectURL(new Blob([doc],{type:'text/html'}));
-  a.download='Math_Newsletter_Week_'+(week<10?'0':'')+week+'_'+LPCAL[String(week)].start+'.html';
-  document.body.appendChild(a); a.click(); document.body.removeChild(a);
-  setTimeout(()=>URL.revokeObjectURL(a.href),4000);
+  nlSaveBlob(new Blob([nlDocHTML(pages,'Arkansas Online School Math — Week '+week+' newsletters')],
+    {type:'text/html'}),
+    'Math_Newsletter_Week_'+(week<10?'0':'')+week+'_'+LPCAL[String(week)].start+'.html');
 }
 
 /* ---- boot ---- */
@@ -11715,8 +11919,41 @@ function nlDownload(){
   _on(document.getElementById('nlnext'),'click',()=>{ const v=+wsel.value;
     if(LPCAL[String(v+1)]){wsel.value=v+1; nlBuild();} });
   _on(document.getElementById('nlrun'),'click',nlBuild);
-  _on(document.getElementById('nlprint'),'click',()=>window.print());
+  _on(document.getElementById('nlprint'),'click',()=>nlPrintNow(null));
   _on(document.getElementById('nlsave'),'click',nlDownload);
+  _on(document.getElementById('nlsaveeach'),'click',nlDownloadEach);
+  /* the extra stylesheet lives in the page as well as in the download */
+  if(!document.getElementById('nlxcss')){
+    const st=document.createElement('style'); st.id='nlxcss'; st.textContent=NLXCSS;
+    document.head.appendChild(st);
+  }
+  const orsel=document.getElementById('nlorient');
+  let or0=''; try{ or0=localStorage.getItem('armath.nl.orient')||''; }catch(e){}
+  orsel.value=(or0==='landscape')?'landscape':'portrait';
+  nlOrApply();
+  _on(orsel,'change',()=>{ nlOrApply(); nlToast(nlOr()==='landscape'
+    ? 'Landscape — the right-hand column splits in two' : 'Portrait'); });
+  /* the section tick boxes */
+  const sb=document.getElementById('nlsecbar');
+  sb.innerHTML=nlSecBarHTML();
+  _on(sb,'change',e=>{ const k=e.target&&e.target.dataset&&e.target.dataset.nlsec;
+    if(!k) return; nlSecLoad()[k]=e.target.checked; nlSecSave(); nlBuild(); });
+  _on(sb,'click',e=>{ const t=e.target;
+    if(t.id!=='nlsecall' && t.id!=='nlsecnone') return;
+    const v=t.id==='nlsecall';
+    NLSECS.forEach(x=>nlSecLoad()[x[0]]=v); nlSecSave();
+    sb.querySelectorAll('[data-nlsec]').forEach(b=>b.checked=v);
+    nlBuild();
+  });
+  /* per-class buttons */
+  _on(document.getElementById('nlout'),'click',e=>{
+    const t=e.target.closest?e.target.closest('.nlpb'):null; if(!t) return;
+    const d=t.dataset;
+    if(d.nlprint) return nlPrintNow(d.nlprint);
+    if(d.nlhtml) return nlDownloadOne(d.nlhtml);
+    if(d.nlcopy) return nlCopyPNG(d.nlcopy);
+    if(d.nlpng) return nlSavePNG(d.nlpng);
+  });
   const t=document.getElementById('theme');
   if(t) _on(t,'click',()=>{ const dark=document.documentElement.getAttribute('data-theme')==='dark';
     document.documentElement.setAttribute('data-theme',dark?'light':'dark');
