@@ -736,6 +736,39 @@
   /* the definition prompt is a hint while you edit, never part of the picture */
   .hdcard [data-hdf]:empty:before{content:attr(data-ph);color:#9aa6b6;font-style:italic}
   @media print{.hdmask{display:none!important}}
+
+  /* --- duplicates and moving --- */
+  .rditem .usedb{display:inline-block;font-size:9px;font-weight:800;letter-spacing:.04em;
+    text-transform:uppercase;border-radius:4px;padding:1px 5px;margin-left:6px;vertical-align:1px;
+    background:#8a5a00;color:#fff}
+  .chip .dupb{font-size:9px;font-weight:800;letter-spacing:.04em;text-transform:uppercase;
+    background:#c2452a;color:#fff;border-radius:4px;padding:1px 5px;margin-right:5px}
+  .chip.isdup{border-color:#c2452a}
+  .chip[draggable="true"]{cursor:grab}
+  .chip.dragging{opacity:.4}
+  .chip .pchipmv{font-weight:800}
+  .prow.dropok{outline:2px dashed var(--accent);outline-offset:3px;border-radius:8px;
+    background:color-mix(in srgb, var(--accent) 7%, transparent)}
+  .pw.dropok{outline:2px dashed var(--accent);outline-offset:2px}
+  .dupwarn{display:flex;flex-wrap:wrap;gap:8px;align-items:center;font-size:12px;font-weight:650;
+    color:#8a5a00;background:#fffaf0;border:1px solid #f2e3c8;border-radius:9px;padding:7px 11px;
+    margin:0 0 10px}
+  html[data-theme="dark"] .dupwarn{background:#241c0c;border-color:#4a3a16;color:#e0b463}
+  .dupwarn button{background:transparent;border:1px solid currentColor;border-radius:999px;
+    font:inherit;font-size:11.5px;font-weight:700;color:inherit;padding:2px 10px;cursor:pointer}
+  .mvpop{position:absolute;z-index:320;background:var(--plane);border:1px solid var(--ring);
+    border-radius:12px;box-shadow:0 20px 50px -22px rgba(0,0,0,.6);padding:11px 13px;width:290px}
+  .mvpop h6{margin:0 0 7px;font-size:11px;letter-spacing:.07em;text-transform:uppercase;
+    color:var(--muted);font-weight:800}
+  .mvpop p{margin:0 0 8px;font-size:11.5px;color:var(--ink2);line-height:1.35}
+  .mvpop select{width:100%;box-sizing:border-box;background:var(--surface);color:var(--ink);
+    border:1px solid var(--ring);border-radius:8px;padding:6px 8px;font:inherit;font-size:12px;
+    margin:0 0 8px}
+  .mvpop .row{display:flex;gap:7px}
+  .mvtoast{position:fixed;left:50%;bottom:26px;transform:translateX(-50%);z-index:340;
+    background:#12161d;color:#f4f7fb;font-size:12.5px;font-weight:650;padding:9px 15px;
+    border-radius:999px;box-shadow:0 16px 40px -18px rgba(0,0,0,.8);max-width:80vw}
+  @media print{.dupwarn,.mvpop,.mvtoast{display:none!important}}
 </style>
 </head>
 <body>
@@ -1870,6 +1903,157 @@ function hdOpen(ref){
       .catch(e=>say('Copy did not work ('+e.message+') — use Download PNG, or screenshot it.'));
   });
 }
+
+/* ================= duplicates, and moving resources ================= */
+var ONX = (typeof _on==='function') ? _on : function(t,e,f,o){ t.addEventListener(e,f,o); };
+function resKey(x){ return (x.url||'')+'|'+x.title; }
+/* key -> every place it sits on the plan */
+function planUsage(){
+  const map={};
+  Object.keys(PLAN.weeks||{}).forEach(w=>(PLAN.weeks[w]||[]).forEach(r=>
+    (r.res||[]).forEach((x,i)=>{ const k=resKey(x);
+      (map[k]=map[k]||[]).push({w:+w, ref:r.ref||'', id:r.id, i:i}); })));
+  return map;
+}
+function usageOf(k){ return planUsage()[k]||[]; }
+function usageLabel(list, skipId){
+  const out=(list||[]).filter(u=>skipId==null || String(u.id)!==String(skipId));
+  if(!out.length) return '';
+  const seen=[], bits=[];
+  out.forEach(u=>{ const s='W'+u.w+(u.ref?' · '+u.ref:''); if(seen.indexOf(s)<0){ seen.push(s); bits.push(s); } });
+  return bits.slice(0,3).join(', ')+(bits.length>3?' +'+(bits.length-3)+' more':'');
+}
+/* how many times each key appears inside one week */
+function dupsIn(w){
+  const c={};
+  planRows(w).forEach(r=>(r.res||[]).forEach(x=>{ const k=resKey(x); c[k]=(c[k]||0)+1; }));
+  return c;
+}
+function dupCount(w){
+  const c=dupsIn(w); let n=0;
+  Object.keys(c).forEach(k=>{ if(c[k]>1) n+=c[k]-1; });
+  return n;
+}
+/* keep the first copy in row order, drop the rest */
+function dupClean(w){
+  const seen={}; let removed=0;
+  planRows(w).forEach(r=>{
+    r.res=(r.res||[]).filter(x=>{ const k=resKey(x);
+      if(seen[k]){ removed++; return false; } seen[k]=1; return true; });
+  });
+  if(removed){ asgStampRows(w); planSave(); planWeekRender(w); planSummary(); }
+  return removed;
+}
+function mvToast(t){
+  const old=document.getElementById('mvtoast'); if(old) old.remove();
+  const d=document.createElement('div'); d.className='mvtoast'; d.id='mvtoast'; d.textContent=t;
+  document.body.appendChild(d);
+  setTimeout(()=>{ const x=document.getElementById('mvtoast'); if(x===d) d.remove(); },3200);
+}
+/* the one place a resource actually changes hands */
+function resMove(fromW,fromId,idx,toW,toId){
+  fromW=+fromW; toW=+toW;
+  const src=planRow(fromW,fromId), dst=planRow(toW,toId);
+  if(!src||!dst) return 'that row is no longer there';
+  if(weekSaved(toW)) return 'Week '+toW+' is saved — press “Edit this week” on it first';
+  const item=(src.res||[])[idx];
+  if(!item) return 'nothing to move';
+  if(String(fromId)===String(toId)) return '';
+  if((dst.res||[]).some(x=>resKey(x)===resKey(item)))
+    return 'that lesson already has “'+item.title+'”';
+  src.res.splice(idx,1);
+  const copy=Object.assign({},item);
+  if(fromW!==toW){ delete copy.asg; delete copy.asgLabel; delete copy.asgName; }
+  dst.res=rdSort((dst.res||[]).concat([copy]));
+  if(fromW!==toW){          /* an assignment belongs to its week, so drop it from the old one */
+    asgList(fromW).forEach(a=>{ a.items=(a.items||[]).filter(x=>asgKey(x)!==asgKey(item)); });
+    PLAN.asg[fromW]=asgList(fromW).filter(a=>(a.items||[]).length);
+  }
+  asgStampRows(fromW); asgStampRows(toW);
+  planSave(); planWeekRender(fromW); if(toW!==fromW) planWeekRender(toW); planSummary();
+  mvToast('Moved “'+item.title+'” to W'+toW+(dst.ref?' · '+dst.ref:'')
+    +(fromW!==toW && item.asgLabel?' — it left assignment '+item.asgLabel:''));
+  return '';
+}
+/* ---- drag and drop ---- */
+let MVDRAG=null;
+ONX(document,'dragstart',function(e){
+  const chip=e.target.closest && e.target.closest('.chip[data-mvi]');
+  if(!chip) return;
+  const row=chip.closest('.prow'); if(!row) return;
+  MVDRAG={w:+row.dataset.w, id:row.dataset.id, i:+chip.dataset.mvi, title:chip.dataset.mvt||''};
+  chip.classList.add('dragging');
+  try{ e.dataTransfer.setData('text/plain', MVDRAG.title);
+       e.dataTransfer.effectAllowed='move'; }catch(err){}
+});
+ONX(document,'dragend',function(){
+  MVDRAG=null;
+  document.querySelectorAll('.chip.dragging').forEach(c=>c.classList.remove('dragging'));
+  document.querySelectorAll('.dropok').forEach(c=>c.classList.remove('dropok'));
+});
+ONX(document,'dragover',function(e){
+  if(!MVDRAG) return;
+  const row=e.target.closest && e.target.closest('.prow');
+  if(row){ e.preventDefault(); try{ e.dataTransfer.dropEffect='move'; }catch(err){}
+    if(!row.classList.contains('dropok')){
+      document.querySelectorAll('.dropok').forEach(c=>c.classList.remove('dropok'));
+      row.classList.add('dropok'); }
+  }
+});
+ONX(document,'dragleave',function(e){
+  const row=e.target.closest && e.target.closest('.prow');
+  if(row && !row.contains(e.relatedTarget)) row.classList.remove('dropok');
+});
+ONX(document,'drop',function(e){
+  if(!MVDRAG) return;
+  const row=e.target.closest && e.target.closest('.prow');
+  if(!row) return;
+  e.preventDefault();
+  document.querySelectorAll('.dropok').forEach(c=>c.classList.remove('dropok'));
+  const d=MVDRAG; MVDRAG=null;
+  const err=resMove(d.w,d.id,d.i,+row.dataset.w,row.dataset.id);
+  if(err) mvToast(err);
+});
+/* ---- the ⇄ chooser, which is what works on a tablet ---- */
+function mvPop(chip){
+  document.querySelectorAll('.mvpop').forEach(p=>p.remove());
+  const row=chip.closest('.prow'); if(!row) return;
+  const fromW=+row.dataset.w, fromId=row.dataset.id, idx=+chip.dataset.mvi;
+  const item=(planRow(fromW,fromId)||{res:[]}).res[idx]; if(!item) return;
+  const weeks=Object.keys(PACE.trimmed.plan.reduce((a,c)=>{a[c.week]=1;return a;},{}))
+    .map(Number).sort((a,b)=>a-b);
+  const pop=document.createElement('div'); pop.className='mvpop';
+  const rowsFor=w=>planRows(w).map(r=>'<option value="'+r.id+'"'+(String(r.id)===String(fromId)&&w===fromW?' selected':'')
+      +'>'+esc(r.ref?r.ref+' — '+(TITLEBY[r.ref]||''):'(row with no lesson)')+'</option>').join('')
+    || '<option value="">no lessons in that week yet</option>';
+  pop.innerHTML='<h6>Move this resource</h6>'
+    +'<p><strong>'+esc(item.title)+'</strong><br>now on W'+fromW
+    +(planRow(fromW,fromId).ref?' · '+esc(planRow(fromW,fromId).ref):'')+'</p>'
+    +'<select id="mvw">'+weeks.map(w=>'<option value="'+w+'"'+(w===fromW?' selected':'')
+      +'>Week '+w+(weekSaved(w)?' — saved':'')+'</option>').join('')+'</select>'
+    +'<select id="mvl">'+rowsFor(fromW)+'</select>'
+    +'<div class="row"><button type="button" class="btn tiny primary" id="mvgo">Move</button>'
+    +'<button type="button" class="btn tiny" id="mvx">Cancel</button></div>';
+  document.body.appendChild(pop);
+  const r=chip.getBoundingClientRect();
+  pop.style.top=(window.scrollY+r.bottom+7)+'px';
+  pop.style.left=Math.max(10,Math.min(window.scrollX+r.left, window.scrollX+innerWidth-305))+'px';
+  pop.querySelector('#mvw').addEventListener('change',ev=>{
+    pop.querySelector('#mvl').innerHTML=rowsFor(+ev.target.value); });
+  pop.querySelector('#mvx').addEventListener('click',()=>pop.remove());
+  pop.querySelector('#mvgo').addEventListener('click',()=>{
+    const toW=+pop.querySelector('#mvw').value, toId=pop.querySelector('#mvl').value;
+    pop.remove();
+    if(!toId) return mvToast('that week has no lesson rows yet — add one first');
+    const err=resMove(fromW,fromId,idx,toW,toId);
+    if(err) mvToast(err);
+  });
+  setTimeout(()=>{
+    const off=function(ev){ if(!pop.contains(ev.target)){ pop.remove();
+      document.removeEventListener('mousedown',off); } };
+    document.addEventListener('mousedown',off);
+  },0);
+}
 /* ================= assignments ================= */
 const ASGTYPES=['IXL skills','IXL assignment','IXL quiz','Schoology assignment','Schoology quiz',
   'Reveal assignment','Reveal quiz','Khan assignment','CK-12 assignment','Paper / worksheet',
@@ -2231,7 +2415,9 @@ function rdSelBar(){
     body.parentNode.insertBefore(bar,body);
   }
   const by={}; [...RDSEL.values()].forEach(r=>{ const g=RGRP(r); by[g]=(by[g]||0)+1; });
+  const already=[...RDSEL.values()].filter(r=>usageLabel(usageOf(rdKey(r)),RDTARGET.id)).length;
   bar.innerHTML='<b>'+RDSEL.size+' selected</b> — kept while you move between tabs · '
+    +(already?'<span style="color:#8a5a00;font-weight:700">'+already+' already on your plan</span> · ':'')
     +Object.keys(by).map(g=>esc((RGRPNAME[g]||g).split(' ')[0])+' '+by[g]).join(' · ')
     +' <button type="button" id="rdselclear">Clear</button>';
   const add=document.getElementById('rdadd');
@@ -2324,6 +2510,9 @@ function rdFill(){
         +'" title="also in the '+esc(r.plan)+'">'+esc(r.plan)+'</span>':'')
       +(asgLabelFor(RDTARGET.week,r)?'<span class="asgmark" title="already in an assignment">'
         +asgLabelFor(RDTARGET.week,r)+'</span>':'')
+      +(function(){ const u=usageLabel(usageOf(rdKey(r)),RDTARGET.id);
+        return u?'<span class="usedb" title="already on your plan — adding it again makes a '
+          +'duplicate">used '+esc(u)+'</span>':''; })()
       +' <span class="meta">'+esc(r.kind||r.src)+(r.code?' · ['+esc(r.code)+']':'')+(r.note?' · '+esc(r.note):'')
       +(r.forRef&&(!row.ref||r.forRef!==row.ref)?' · from '+esc(r.forRef):'')+'</span>'
       +(r.url?'<a href="'+esc(r.url)+'" target="_blank" rel="noopener">open</a>':'')+'</label></div>';
@@ -2394,6 +2583,7 @@ function rdAddSelected(asAssignment){
 
 /* ================= teacher entry: rendering ================= */
 function planRowHTML(w,r){
+  const DUPW=dupsIn(w);
   const units=Object.keys(PUT).sort((a,b)=>a-b);
   const les=PLES.filter(l=>!r.unit || l.unit===String(r.unit));
   const known = r.ref && PLES.some(l=>l.ref===r.ref);
@@ -2416,12 +2606,18 @@ function planRowHTML(w,r){
    +'</div>'
    + ((KCBY[r.ref]||[]).length ? '<div class="chips"><span class="kcbadge">★ '+esc((KCBY[r.ref]||[]).join(', '))+'</span></div>' : '')
    + ((r.res||[]).length ? '<div class="chips">'+(r.res=rdSort(r.res)).map((x,i)=>
-       '<span class="chip '+RGRP(x)+'">'
+       '<span class="chip '+RGRP(x)+(DUPW[resKey(x)]>1?' isdup':'')+'" draggable="true" data-mvi="'+i+'"'
+       +' data-mvt="'+esc(x.title)+'" title="drag me onto another lesson, or use the arrows">'
+       +(DUPW[resKey(x)]>1?'<span class="dupb" title="added '+DUPW[resKey(x)]
+         +' times in this week">dup</span>':'')
        +(x.asgLabel?'<span class="asgb" title="'+esc(x.asgName||'assignment')+'">'+esc(x.asgLabel)+'</span>':'')
        +'<span class="src">'+esc(x.src)+'</span>'
        +'<span class="ktype">'+esc(rdTypeWord(x))+'</span>'+snum(x.num)
        + resLinkHTML(x)
-       +'<button type="button" class="x pchipdel" data-i="'+i+'" aria-label="Remove resource">×</button></span>').join('')+'</div>' : '')
+       +'<button type="button" class="x pchipmv" data-i="'+i+'" '
+       +'aria-label="Move to another lesson or week" title="move to another lesson or week">⇄</button>'
+       +'<button type="button" class="x pchipdel" data-i="'+i+'" aria-label="Remove resource">×</button>'
+       +'</span>').join('')+'</div>' : '')
    +'</div>';
 }
 /* the bare type word for a chip: skill, video, lesson, exercise, article */
@@ -2470,6 +2666,10 @@ function planWeekBodyHTML(w){
    +(weekSaved(w)&&rows.length?'<span class="savedchip">&#10003; saved'
      +(((PLAN.state||{})[w]||{}).savedAt?' · '+new Date(PLAN.state[w].savedAt).toLocaleDateString():'')+'</span>':'')
    +'</div>'
+   + (dupCount(w)?'<div class="dupwarn"><span>&#9888; '+dupCount(w)+' duplicate resource'
+       +(dupCount(w)===1?'':'s')+' in this week — the same link is on more than one lesson.</span>'
+       +(weekSaved(w)&&rows.length?'':'<button type="button" class="pdupfix">Remove the extra copies</button>')
+       +'</div>':'')
    + asgPanelHTML(w, weekSaved(w)&&rows.length>0, rows.length>0)
    + (weekSaved(w)&&rows.length
       ? planWeekSummaryHTML(w,rows)
@@ -2590,6 +2790,10 @@ _on(document,'click', function(e){
     cbs.forEach(c=>{ c.checked=on; const r=RDLIST[+c.dataset.i];
       if(r){ if(on) RDSEL.set(rdKey(r),r); else RDSEL.delete(rdKey(r)); } });
     t.textContent = on ? 'Unselect all shown' : 'Select all shown'; rdSelBar(); return; }
+  if(t.classList.contains('pdupfix')){
+    const card0=t.closest('.pw'); if(card0){ const n=dupClean(+card0.dataset.w);
+      mvToast(n?('Removed '+n+' duplicate'+(n===1?'':'s')):'nothing to remove'); }
+    return; }
   const abox0=t.closest('.asgitem');
   if(abox0 && t.classList.contains('asgdel')){
     asgDelete(+abox0.dataset.w, abox0.dataset.asg);
@@ -2614,6 +2818,7 @@ _on(document,'click', function(e){
     PLAN.weeks[w]=planRows(w).filter(r=>String(r.id)!==String(id));
     planSave(); planWeekRender(w); planSummary(); return; }
   if(t.classList.contains('pres')){ rdOpen(w,id); return; }
+  if(t.classList.contains('pchipmv')){ mvPop(t.closest('.chip')); return; }
   if(t.classList.contains('phdr')){ const r=planRow(w,id); hdOpen(r&&r.ref); return; }
   if(t.classList.contains('pasg')){
     rdOpen(w,id);
@@ -3639,6 +3844,157 @@ function hdOpen(ref){
       .catch(e=>say('Copy did not work ('+e.message+') — use Download PNG, or screenshot it.'));
   });
 }
+
+/* ================= duplicates, and moving resources ================= */
+var ONX = (typeof _on==='function') ? _on : function(t,e,f,o){ t.addEventListener(e,f,o); };
+function resKey(x){ return (x.url||'')+'|'+x.title; }
+/* key -> every place it sits on the plan */
+function planUsage(){
+  const map={};
+  Object.keys(PLAN.weeks||{}).forEach(w=>(PLAN.weeks[w]||[]).forEach(r=>
+    (r.res||[]).forEach((x,i)=>{ const k=resKey(x);
+      (map[k]=map[k]||[]).push({w:+w, ref:r.ref||'', id:r.id, i:i}); })));
+  return map;
+}
+function usageOf(k){ return planUsage()[k]||[]; }
+function usageLabel(list, skipId){
+  const out=(list||[]).filter(u=>skipId==null || String(u.id)!==String(skipId));
+  if(!out.length) return '';
+  const seen=[], bits=[];
+  out.forEach(u=>{ const s='W'+u.w+(u.ref?' · '+u.ref:''); if(seen.indexOf(s)<0){ seen.push(s); bits.push(s); } });
+  return bits.slice(0,3).join(', ')+(bits.length>3?' +'+(bits.length-3)+' more':'');
+}
+/* how many times each key appears inside one week */
+function dupsIn(w){
+  const c={};
+  planRows(w).forEach(r=>(r.res||[]).forEach(x=>{ const k=resKey(x); c[k]=(c[k]||0)+1; }));
+  return c;
+}
+function dupCount(w){
+  const c=dupsIn(w); let n=0;
+  Object.keys(c).forEach(k=>{ if(c[k]>1) n+=c[k]-1; });
+  return n;
+}
+/* keep the first copy in row order, drop the rest */
+function dupClean(w){
+  const seen={}; let removed=0;
+  planRows(w).forEach(r=>{
+    r.res=(r.res||[]).filter(x=>{ const k=resKey(x);
+      if(seen[k]){ removed++; return false; } seen[k]=1; return true; });
+  });
+  if(removed){ asgStampRows(w); planSave(); planWeekRender(w); planSummary(); }
+  return removed;
+}
+function mvToast(t){
+  const old=document.getElementById('mvtoast'); if(old) old.remove();
+  const d=document.createElement('div'); d.className='mvtoast'; d.id='mvtoast'; d.textContent=t;
+  document.body.appendChild(d);
+  setTimeout(()=>{ const x=document.getElementById('mvtoast'); if(x===d) d.remove(); },3200);
+}
+/* the one place a resource actually changes hands */
+function resMove(fromW,fromId,idx,toW,toId){
+  fromW=+fromW; toW=+toW;
+  const src=planRow(fromW,fromId), dst=planRow(toW,toId);
+  if(!src||!dst) return 'that row is no longer there';
+  if(weekSaved(toW)) return 'Week '+toW+' is saved — press “Edit this week” on it first';
+  const item=(src.res||[])[idx];
+  if(!item) return 'nothing to move';
+  if(String(fromId)===String(toId)) return '';
+  if((dst.res||[]).some(x=>resKey(x)===resKey(item)))
+    return 'that lesson already has “'+item.title+'”';
+  src.res.splice(idx,1);
+  const copy=Object.assign({},item);
+  if(fromW!==toW){ delete copy.asg; delete copy.asgLabel; delete copy.asgName; }
+  dst.res=rdSort((dst.res||[]).concat([copy]));
+  if(fromW!==toW){          /* an assignment belongs to its week, so drop it from the old one */
+    asgList(fromW).forEach(a=>{ a.items=(a.items||[]).filter(x=>asgKey(x)!==asgKey(item)); });
+    PLAN.asg[fromW]=asgList(fromW).filter(a=>(a.items||[]).length);
+  }
+  asgStampRows(fromW); asgStampRows(toW);
+  planSave(); planWeekRender(fromW); if(toW!==fromW) planWeekRender(toW); planSummary();
+  mvToast('Moved “'+item.title+'” to W'+toW+(dst.ref?' · '+dst.ref:'')
+    +(fromW!==toW && item.asgLabel?' — it left assignment '+item.asgLabel:''));
+  return '';
+}
+/* ---- drag and drop ---- */
+let MVDRAG=null;
+ONX(document,'dragstart',function(e){
+  const chip=e.target.closest && e.target.closest('.chip[data-mvi]');
+  if(!chip) return;
+  const row=chip.closest('.prow'); if(!row) return;
+  MVDRAG={w:+row.dataset.w, id:row.dataset.id, i:+chip.dataset.mvi, title:chip.dataset.mvt||''};
+  chip.classList.add('dragging');
+  try{ e.dataTransfer.setData('text/plain', MVDRAG.title);
+       e.dataTransfer.effectAllowed='move'; }catch(err){}
+});
+ONX(document,'dragend',function(){
+  MVDRAG=null;
+  document.querySelectorAll('.chip.dragging').forEach(c=>c.classList.remove('dragging'));
+  document.querySelectorAll('.dropok').forEach(c=>c.classList.remove('dropok'));
+});
+ONX(document,'dragover',function(e){
+  if(!MVDRAG) return;
+  const row=e.target.closest && e.target.closest('.prow');
+  if(row){ e.preventDefault(); try{ e.dataTransfer.dropEffect='move'; }catch(err){}
+    if(!row.classList.contains('dropok')){
+      document.querySelectorAll('.dropok').forEach(c=>c.classList.remove('dropok'));
+      row.classList.add('dropok'); }
+  }
+});
+ONX(document,'dragleave',function(e){
+  const row=e.target.closest && e.target.closest('.prow');
+  if(row && !row.contains(e.relatedTarget)) row.classList.remove('dropok');
+});
+ONX(document,'drop',function(e){
+  if(!MVDRAG) return;
+  const row=e.target.closest && e.target.closest('.prow');
+  if(!row) return;
+  e.preventDefault();
+  document.querySelectorAll('.dropok').forEach(c=>c.classList.remove('dropok'));
+  const d=MVDRAG; MVDRAG=null;
+  const err=resMove(d.w,d.id,d.i,+row.dataset.w,row.dataset.id);
+  if(err) mvToast(err);
+});
+/* ---- the ⇄ chooser, which is what works on a tablet ---- */
+function mvPop(chip){
+  document.querySelectorAll('.mvpop').forEach(p=>p.remove());
+  const row=chip.closest('.prow'); if(!row) return;
+  const fromW=+row.dataset.w, fromId=row.dataset.id, idx=+chip.dataset.mvi;
+  const item=(planRow(fromW,fromId)||{res:[]}).res[idx]; if(!item) return;
+  const weeks=Object.keys(PACE.trimmed.plan.reduce((a,c)=>{a[c.week]=1;return a;},{}))
+    .map(Number).sort((a,b)=>a-b);
+  const pop=document.createElement('div'); pop.className='mvpop';
+  const rowsFor=w=>planRows(w).map(r=>'<option value="'+r.id+'"'+(String(r.id)===String(fromId)&&w===fromW?' selected':'')
+      +'>'+esc(r.ref?r.ref+' — '+(TITLEBY[r.ref]||''):'(row with no lesson)')+'</option>').join('')
+    || '<option value="">no lessons in that week yet</option>';
+  pop.innerHTML='<h6>Move this resource</h6>'
+    +'<p><strong>'+esc(item.title)+'</strong><br>now on W'+fromW
+    +(planRow(fromW,fromId).ref?' · '+esc(planRow(fromW,fromId).ref):'')+'</p>'
+    +'<select id="mvw">'+weeks.map(w=>'<option value="'+w+'"'+(w===fromW?' selected':'')
+      +'>Week '+w+(weekSaved(w)?' — saved':'')+'</option>').join('')+'</select>'
+    +'<select id="mvl">'+rowsFor(fromW)+'</select>'
+    +'<div class="row"><button type="button" class="btn tiny primary" id="mvgo">Move</button>'
+    +'<button type="button" class="btn tiny" id="mvx">Cancel</button></div>';
+  document.body.appendChild(pop);
+  const r=chip.getBoundingClientRect();
+  pop.style.top=(window.scrollY+r.bottom+7)+'px';
+  pop.style.left=Math.max(10,Math.min(window.scrollX+r.left, window.scrollX+innerWidth-305))+'px';
+  pop.querySelector('#mvw').addEventListener('change',ev=>{
+    pop.querySelector('#mvl').innerHTML=rowsFor(+ev.target.value); });
+  pop.querySelector('#mvx').addEventListener('click',()=>pop.remove());
+  pop.querySelector('#mvgo').addEventListener('click',()=>{
+    const toW=+pop.querySelector('#mvw').value, toId=pop.querySelector('#mvl').value;
+    pop.remove();
+    if(!toId) return mvToast('that week has no lesson rows yet — add one first');
+    const err=resMove(fromW,fromId,idx,toW,toId);
+    if(err) mvToast(err);
+  });
+  setTimeout(()=>{
+    const off=function(ev){ if(!pop.contains(ev.target)){ pop.remove();
+      document.removeEventListener('mousedown',off); } };
+    document.addEventListener('mousedown',off);
+  },0);
+}
 /* ================= assignments ================= */
 const ASGTYPES=['IXL skills','IXL assignment','IXL quiz','Schoology assignment','Schoology quiz',
   'Reveal assignment','Reveal quiz','Khan assignment','CK-12 assignment','Paper / worksheet',
@@ -4000,7 +4356,9 @@ function rdSelBar(){
     body.parentNode.insertBefore(bar,body);
   }
   const by={}; [...RDSEL.values()].forEach(r=>{ const g=RGRP(r); by[g]=(by[g]||0)+1; });
+  const already=[...RDSEL.values()].filter(r=>usageLabel(usageOf(rdKey(r)),RDTARGET.id)).length;
   bar.innerHTML='<b>'+RDSEL.size+' selected</b> — kept while you move between tabs · '
+    +(already?'<span style="color:#8a5a00;font-weight:700">'+already+' already on your plan</span> · ':'')
     +Object.keys(by).map(g=>esc((RGRPNAME[g]||g).split(' ')[0])+' '+by[g]).join(' · ')
     +' <button type="button" id="rdselclear">Clear</button>';
   const add=document.getElementById('rdadd');
@@ -4093,6 +4451,9 @@ function rdFill(){
         +'" title="also in the '+esc(r.plan)+'">'+esc(r.plan)+'</span>':'')
       +(asgLabelFor(RDTARGET.week,r)?'<span class="asgmark" title="already in an assignment">'
         +asgLabelFor(RDTARGET.week,r)+'</span>':'')
+      +(function(){ const u=usageLabel(usageOf(rdKey(r)),RDTARGET.id);
+        return u?'<span class="usedb" title="already on your plan — adding it again makes a '
+          +'duplicate">used '+esc(u)+'</span>':''; })()
       +' <span class="meta">'+esc(r.kind||r.src)+(r.code?' · ['+esc(r.code)+']':'')+(r.note?' · '+esc(r.note):'')
       +(r.forRef&&(!row.ref||r.forRef!==row.ref)?' · from '+esc(r.forRef):'')+'</span>'
       +(r.url?'<a href="'+esc(r.url)+'" target="_blank" rel="noopener">open</a>':'')+'</label></div>';
@@ -4163,6 +4524,7 @@ function rdAddSelected(asAssignment){
 
 /* ================= teacher entry: rendering ================= */
 function planRowHTML(w,r){
+  const DUPW=dupsIn(w);
   const units=Object.keys(PUT).sort((a,b)=>a-b);
   const les=PLES.filter(l=>!r.unit || l.unit===String(r.unit));
   const known = r.ref && PLES.some(l=>l.ref===r.ref);
@@ -4185,12 +4547,18 @@ function planRowHTML(w,r){
    +'</div>'
    + ((KCBY[r.ref]||[]).length ? '<div class="chips"><span class="kcbadge">★ '+esc((KCBY[r.ref]||[]).join(', '))+'</span></div>' : '')
    + ((r.res||[]).length ? '<div class="chips">'+(r.res=rdSort(r.res)).map((x,i)=>
-       '<span class="chip '+RGRP(x)+'">'
+       '<span class="chip '+RGRP(x)+(DUPW[resKey(x)]>1?' isdup':'')+'" draggable="true" data-mvi="'+i+'"'
+       +' data-mvt="'+esc(x.title)+'" title="drag me onto another lesson, or use the arrows">'
+       +(DUPW[resKey(x)]>1?'<span class="dupb" title="added '+DUPW[resKey(x)]
+         +' times in this week">dup</span>':'')
        +(x.asgLabel?'<span class="asgb" title="'+esc(x.asgName||'assignment')+'">'+esc(x.asgLabel)+'</span>':'')
        +'<span class="src">'+esc(x.src)+'</span>'
        +'<span class="ktype">'+esc(rdTypeWord(x))+'</span>'+snum(x.num)
        + resLinkHTML(x)
-       +'<button type="button" class="x pchipdel" data-i="'+i+'" aria-label="Remove resource">×</button></span>').join('')+'</div>' : '')
+       +'<button type="button" class="x pchipmv" data-i="'+i+'" '
+       +'aria-label="Move to another lesson or week" title="move to another lesson or week">⇄</button>'
+       +'<button type="button" class="x pchipdel" data-i="'+i+'" aria-label="Remove resource">×</button>'
+       +'</span>').join('')+'</div>' : '')
    +'</div>';
 }
 /* the bare type word for a chip: skill, video, lesson, exercise, article */
@@ -4239,6 +4607,10 @@ function planWeekBodyHTML(w){
    +(weekSaved(w)&&rows.length?'<span class="savedchip">&#10003; saved'
      +(((PLAN.state||{})[w]||{}).savedAt?' · '+new Date(PLAN.state[w].savedAt).toLocaleDateString():'')+'</span>':'')
    +'</div>'
+   + (dupCount(w)?'<div class="dupwarn"><span>&#9888; '+dupCount(w)+' duplicate resource'
+       +(dupCount(w)===1?'':'s')+' in this week — the same link is on more than one lesson.</span>'
+       +(weekSaved(w)&&rows.length?'':'<button type="button" class="pdupfix">Remove the extra copies</button>')
+       +'</div>':'')
    + asgPanelHTML(w, weekSaved(w)&&rows.length>0, rows.length>0)
    + (weekSaved(w)&&rows.length
       ? planWeekSummaryHTML(w,rows)
@@ -4359,6 +4731,10 @@ _on(document,'click', function(e){
     cbs.forEach(c=>{ c.checked=on; const r=RDLIST[+c.dataset.i];
       if(r){ if(on) RDSEL.set(rdKey(r),r); else RDSEL.delete(rdKey(r)); } });
     t.textContent = on ? 'Unselect all shown' : 'Select all shown'; rdSelBar(); return; }
+  if(t.classList.contains('pdupfix')){
+    const card0=t.closest('.pw'); if(card0){ const n=dupClean(+card0.dataset.w);
+      mvToast(n?('Removed '+n+' duplicate'+(n===1?'':'s')):'nothing to remove'); }
+    return; }
   const abox0=t.closest('.asgitem');
   if(abox0 && t.classList.contains('asgdel')){
     asgDelete(+abox0.dataset.w, abox0.dataset.asg);
@@ -4383,6 +4759,7 @@ _on(document,'click', function(e){
     PLAN.weeks[w]=planRows(w).filter(r=>String(r.id)!==String(id));
     planSave(); planWeekRender(w); planSummary(); return; }
   if(t.classList.contains('pres')){ rdOpen(w,id); return; }
+  if(t.classList.contains('pchipmv')){ mvPop(t.closest('.chip')); return; }
   if(t.classList.contains('phdr')){ const r=planRow(w,id); hdOpen(r&&r.ref); return; }
   if(t.classList.contains('pasg')){
     rdOpen(w,id);
@@ -5408,6 +5785,157 @@ function hdOpen(ref){
       .catch(e=>say('Copy did not work ('+e.message+') — use Download PNG, or screenshot it.'));
   });
 }
+
+/* ================= duplicates, and moving resources ================= */
+var ONX = (typeof _on==='function') ? _on : function(t,e,f,o){ t.addEventListener(e,f,o); };
+function resKey(x){ return (x.url||'')+'|'+x.title; }
+/* key -> every place it sits on the plan */
+function planUsage(){
+  const map={};
+  Object.keys(PLAN.weeks||{}).forEach(w=>(PLAN.weeks[w]||[]).forEach(r=>
+    (r.res||[]).forEach((x,i)=>{ const k=resKey(x);
+      (map[k]=map[k]||[]).push({w:+w, ref:r.ref||'', id:r.id, i:i}); })));
+  return map;
+}
+function usageOf(k){ return planUsage()[k]||[]; }
+function usageLabel(list, skipId){
+  const out=(list||[]).filter(u=>skipId==null || String(u.id)!==String(skipId));
+  if(!out.length) return '';
+  const seen=[], bits=[];
+  out.forEach(u=>{ const s='W'+u.w+(u.ref?' · '+u.ref:''); if(seen.indexOf(s)<0){ seen.push(s); bits.push(s); } });
+  return bits.slice(0,3).join(', ')+(bits.length>3?' +'+(bits.length-3)+' more':'');
+}
+/* how many times each key appears inside one week */
+function dupsIn(w){
+  const c={};
+  planRows(w).forEach(r=>(r.res||[]).forEach(x=>{ const k=resKey(x); c[k]=(c[k]||0)+1; }));
+  return c;
+}
+function dupCount(w){
+  const c=dupsIn(w); let n=0;
+  Object.keys(c).forEach(k=>{ if(c[k]>1) n+=c[k]-1; });
+  return n;
+}
+/* keep the first copy in row order, drop the rest */
+function dupClean(w){
+  const seen={}; let removed=0;
+  planRows(w).forEach(r=>{
+    r.res=(r.res||[]).filter(x=>{ const k=resKey(x);
+      if(seen[k]){ removed++; return false; } seen[k]=1; return true; });
+  });
+  if(removed){ asgStampRows(w); planSave(); planWeekRender(w); planSummary(); }
+  return removed;
+}
+function mvToast(t){
+  const old=document.getElementById('mvtoast'); if(old) old.remove();
+  const d=document.createElement('div'); d.className='mvtoast'; d.id='mvtoast'; d.textContent=t;
+  document.body.appendChild(d);
+  setTimeout(()=>{ const x=document.getElementById('mvtoast'); if(x===d) d.remove(); },3200);
+}
+/* the one place a resource actually changes hands */
+function resMove(fromW,fromId,idx,toW,toId){
+  fromW=+fromW; toW=+toW;
+  const src=planRow(fromW,fromId), dst=planRow(toW,toId);
+  if(!src||!dst) return 'that row is no longer there';
+  if(weekSaved(toW)) return 'Week '+toW+' is saved — press “Edit this week” on it first';
+  const item=(src.res||[])[idx];
+  if(!item) return 'nothing to move';
+  if(String(fromId)===String(toId)) return '';
+  if((dst.res||[]).some(x=>resKey(x)===resKey(item)))
+    return 'that lesson already has “'+item.title+'”';
+  src.res.splice(idx,1);
+  const copy=Object.assign({},item);
+  if(fromW!==toW){ delete copy.asg; delete copy.asgLabel; delete copy.asgName; }
+  dst.res=rdSort((dst.res||[]).concat([copy]));
+  if(fromW!==toW){          /* an assignment belongs to its week, so drop it from the old one */
+    asgList(fromW).forEach(a=>{ a.items=(a.items||[]).filter(x=>asgKey(x)!==asgKey(item)); });
+    PLAN.asg[fromW]=asgList(fromW).filter(a=>(a.items||[]).length);
+  }
+  asgStampRows(fromW); asgStampRows(toW);
+  planSave(); planWeekRender(fromW); if(toW!==fromW) planWeekRender(toW); planSummary();
+  mvToast('Moved “'+item.title+'” to W'+toW+(dst.ref?' · '+dst.ref:'')
+    +(fromW!==toW && item.asgLabel?' — it left assignment '+item.asgLabel:''));
+  return '';
+}
+/* ---- drag and drop ---- */
+let MVDRAG=null;
+ONX(document,'dragstart',function(e){
+  const chip=e.target.closest && e.target.closest('.chip[data-mvi]');
+  if(!chip) return;
+  const row=chip.closest('.prow'); if(!row) return;
+  MVDRAG={w:+row.dataset.w, id:row.dataset.id, i:+chip.dataset.mvi, title:chip.dataset.mvt||''};
+  chip.classList.add('dragging');
+  try{ e.dataTransfer.setData('text/plain', MVDRAG.title);
+       e.dataTransfer.effectAllowed='move'; }catch(err){}
+});
+ONX(document,'dragend',function(){
+  MVDRAG=null;
+  document.querySelectorAll('.chip.dragging').forEach(c=>c.classList.remove('dragging'));
+  document.querySelectorAll('.dropok').forEach(c=>c.classList.remove('dropok'));
+});
+ONX(document,'dragover',function(e){
+  if(!MVDRAG) return;
+  const row=e.target.closest && e.target.closest('.prow');
+  if(row){ e.preventDefault(); try{ e.dataTransfer.dropEffect='move'; }catch(err){}
+    if(!row.classList.contains('dropok')){
+      document.querySelectorAll('.dropok').forEach(c=>c.classList.remove('dropok'));
+      row.classList.add('dropok'); }
+  }
+});
+ONX(document,'dragleave',function(e){
+  const row=e.target.closest && e.target.closest('.prow');
+  if(row && !row.contains(e.relatedTarget)) row.classList.remove('dropok');
+});
+ONX(document,'drop',function(e){
+  if(!MVDRAG) return;
+  const row=e.target.closest && e.target.closest('.prow');
+  if(!row) return;
+  e.preventDefault();
+  document.querySelectorAll('.dropok').forEach(c=>c.classList.remove('dropok'));
+  const d=MVDRAG; MVDRAG=null;
+  const err=resMove(d.w,d.id,d.i,+row.dataset.w,row.dataset.id);
+  if(err) mvToast(err);
+});
+/* ---- the ⇄ chooser, which is what works on a tablet ---- */
+function mvPop(chip){
+  document.querySelectorAll('.mvpop').forEach(p=>p.remove());
+  const row=chip.closest('.prow'); if(!row) return;
+  const fromW=+row.dataset.w, fromId=row.dataset.id, idx=+chip.dataset.mvi;
+  const item=(planRow(fromW,fromId)||{res:[]}).res[idx]; if(!item) return;
+  const weeks=Object.keys(PACE.trimmed.plan.reduce((a,c)=>{a[c.week]=1;return a;},{}))
+    .map(Number).sort((a,b)=>a-b);
+  const pop=document.createElement('div'); pop.className='mvpop';
+  const rowsFor=w=>planRows(w).map(r=>'<option value="'+r.id+'"'+(String(r.id)===String(fromId)&&w===fromW?' selected':'')
+      +'>'+esc(r.ref?r.ref+' — '+(TITLEBY[r.ref]||''):'(row with no lesson)')+'</option>').join('')
+    || '<option value="">no lessons in that week yet</option>';
+  pop.innerHTML='<h6>Move this resource</h6>'
+    +'<p><strong>'+esc(item.title)+'</strong><br>now on W'+fromW
+    +(planRow(fromW,fromId).ref?' · '+esc(planRow(fromW,fromId).ref):'')+'</p>'
+    +'<select id="mvw">'+weeks.map(w=>'<option value="'+w+'"'+(w===fromW?' selected':'')
+      +'>Week '+w+(weekSaved(w)?' — saved':'')+'</option>').join('')+'</select>'
+    +'<select id="mvl">'+rowsFor(fromW)+'</select>'
+    +'<div class="row"><button type="button" class="btn tiny primary" id="mvgo">Move</button>'
+    +'<button type="button" class="btn tiny" id="mvx">Cancel</button></div>';
+  document.body.appendChild(pop);
+  const r=chip.getBoundingClientRect();
+  pop.style.top=(window.scrollY+r.bottom+7)+'px';
+  pop.style.left=Math.max(10,Math.min(window.scrollX+r.left, window.scrollX+innerWidth-305))+'px';
+  pop.querySelector('#mvw').addEventListener('change',ev=>{
+    pop.querySelector('#mvl').innerHTML=rowsFor(+ev.target.value); });
+  pop.querySelector('#mvx').addEventListener('click',()=>pop.remove());
+  pop.querySelector('#mvgo').addEventListener('click',()=>{
+    const toW=+pop.querySelector('#mvw').value, toId=pop.querySelector('#mvl').value;
+    pop.remove();
+    if(!toId) return mvToast('that week has no lesson rows yet — add one first');
+    const err=resMove(fromW,fromId,idx,toW,toId);
+    if(err) mvToast(err);
+  });
+  setTimeout(()=>{
+    const off=function(ev){ if(!pop.contains(ev.target)){ pop.remove();
+      document.removeEventListener('mousedown',off); } };
+    document.addEventListener('mousedown',off);
+  },0);
+}
 /* ================= assignments ================= */
 const ASGTYPES=['IXL skills','IXL assignment','IXL quiz','Schoology assignment','Schoology quiz',
   'Reveal assignment','Reveal quiz','Khan assignment','CK-12 assignment','Paper / worksheet',
@@ -5769,7 +6297,9 @@ function rdSelBar(){
     body.parentNode.insertBefore(bar,body);
   }
   const by={}; [...RDSEL.values()].forEach(r=>{ const g=RGRP(r); by[g]=(by[g]||0)+1; });
+  const already=[...RDSEL.values()].filter(r=>usageLabel(usageOf(rdKey(r)),RDTARGET.id)).length;
   bar.innerHTML='<b>'+RDSEL.size+' selected</b> — kept while you move between tabs · '
+    +(already?'<span style="color:#8a5a00;font-weight:700">'+already+' already on your plan</span> · ':'')
     +Object.keys(by).map(g=>esc((RGRPNAME[g]||g).split(' ')[0])+' '+by[g]).join(' · ')
     +' <button type="button" id="rdselclear">Clear</button>';
   const add=document.getElementById('rdadd');
@@ -5862,6 +6392,9 @@ function rdFill(){
         +'" title="also in the '+esc(r.plan)+'">'+esc(r.plan)+'</span>':'')
       +(asgLabelFor(RDTARGET.week,r)?'<span class="asgmark" title="already in an assignment">'
         +asgLabelFor(RDTARGET.week,r)+'</span>':'')
+      +(function(){ const u=usageLabel(usageOf(rdKey(r)),RDTARGET.id);
+        return u?'<span class="usedb" title="already on your plan — adding it again makes a '
+          +'duplicate">used '+esc(u)+'</span>':''; })()
       +' <span class="meta">'+esc(r.kind||r.src)+(r.code?' · ['+esc(r.code)+']':'')+(r.note?' · '+esc(r.note):'')
       +(r.forRef&&(!row.ref||r.forRef!==row.ref)?' · from '+esc(r.forRef):'')+'</span>'
       +(r.url?'<a href="'+esc(r.url)+'" target="_blank" rel="noopener">open</a>':'')+'</label></div>';
@@ -5932,6 +6465,7 @@ function rdAddSelected(asAssignment){
 
 /* ================= teacher entry: rendering ================= */
 function planRowHTML(w,r){
+  const DUPW=dupsIn(w);
   const units=Object.keys(PUT).sort((a,b)=>a-b);
   const les=PLES.filter(l=>!r.unit || l.unit===String(r.unit));
   const known = r.ref && PLES.some(l=>l.ref===r.ref);
@@ -5954,12 +6488,18 @@ function planRowHTML(w,r){
    +'</div>'
    + ((KCBY[r.ref]||[]).length ? '<div class="chips"><span class="kcbadge">★ '+esc((KCBY[r.ref]||[]).join(', '))+'</span></div>' : '')
    + ((r.res||[]).length ? '<div class="chips">'+(r.res=rdSort(r.res)).map((x,i)=>
-       '<span class="chip '+RGRP(x)+'">'
+       '<span class="chip '+RGRP(x)+(DUPW[resKey(x)]>1?' isdup':'')+'" draggable="true" data-mvi="'+i+'"'
+       +' data-mvt="'+esc(x.title)+'" title="drag me onto another lesson, or use the arrows">'
+       +(DUPW[resKey(x)]>1?'<span class="dupb" title="added '+DUPW[resKey(x)]
+         +' times in this week">dup</span>':'')
        +(x.asgLabel?'<span class="asgb" title="'+esc(x.asgName||'assignment')+'">'+esc(x.asgLabel)+'</span>':'')
        +'<span class="src">'+esc(x.src)+'</span>'
        +'<span class="ktype">'+esc(rdTypeWord(x))+'</span>'+snum(x.num)
        + resLinkHTML(x)
-       +'<button type="button" class="x pchipdel" data-i="'+i+'" aria-label="Remove resource">×</button></span>').join('')+'</div>' : '')
+       +'<button type="button" class="x pchipmv" data-i="'+i+'" '
+       +'aria-label="Move to another lesson or week" title="move to another lesson or week">⇄</button>'
+       +'<button type="button" class="x pchipdel" data-i="'+i+'" aria-label="Remove resource">×</button>'
+       +'</span>').join('')+'</div>' : '')
    +'</div>';
 }
 /* the bare type word for a chip: skill, video, lesson, exercise, article */
@@ -6008,6 +6548,10 @@ function planWeekBodyHTML(w){
    +(weekSaved(w)&&rows.length?'<span class="savedchip">&#10003; saved'
      +(((PLAN.state||{})[w]||{}).savedAt?' · '+new Date(PLAN.state[w].savedAt).toLocaleDateString():'')+'</span>':'')
    +'</div>'
+   + (dupCount(w)?'<div class="dupwarn"><span>&#9888; '+dupCount(w)+' duplicate resource'
+       +(dupCount(w)===1?'':'s')+' in this week — the same link is on more than one lesson.</span>'
+       +(weekSaved(w)&&rows.length?'':'<button type="button" class="pdupfix">Remove the extra copies</button>')
+       +'</div>':'')
    + asgPanelHTML(w, weekSaved(w)&&rows.length>0, rows.length>0)
    + (weekSaved(w)&&rows.length
       ? planWeekSummaryHTML(w,rows)
@@ -6128,6 +6672,10 @@ _on(document,'click', function(e){
     cbs.forEach(c=>{ c.checked=on; const r=RDLIST[+c.dataset.i];
       if(r){ if(on) RDSEL.set(rdKey(r),r); else RDSEL.delete(rdKey(r)); } });
     t.textContent = on ? 'Unselect all shown' : 'Select all shown'; rdSelBar(); return; }
+  if(t.classList.contains('pdupfix')){
+    const card0=t.closest('.pw'); if(card0){ const n=dupClean(+card0.dataset.w);
+      mvToast(n?('Removed '+n+' duplicate'+(n===1?'':'s')):'nothing to remove'); }
+    return; }
   const abox0=t.closest('.asgitem');
   if(abox0 && t.classList.contains('asgdel')){
     asgDelete(+abox0.dataset.w, abox0.dataset.asg);
@@ -6152,6 +6700,7 @@ _on(document,'click', function(e){
     PLAN.weeks[w]=planRows(w).filter(r=>String(r.id)!==String(id));
     planSave(); planWeekRender(w); planSummary(); return; }
   if(t.classList.contains('pres')){ rdOpen(w,id); return; }
+  if(t.classList.contains('pchipmv')){ mvPop(t.closest('.chip')); return; }
   if(t.classList.contains('phdr')){ const r=planRow(w,id); hdOpen(r&&r.ref); return; }
   if(t.classList.contains('pasg')){
     rdOpen(w,id);
@@ -7179,6 +7728,157 @@ function hdOpen(ref){
       .catch(e=>say('Copy did not work ('+e.message+') — use Download PNG, or screenshot it.'));
   });
 }
+
+/* ================= duplicates, and moving resources ================= */
+var ONX = (typeof _on==='function') ? _on : function(t,e,f,o){ t.addEventListener(e,f,o); };
+function resKey(x){ return (x.url||'')+'|'+x.title; }
+/* key -> every place it sits on the plan */
+function planUsage(){
+  const map={};
+  Object.keys(PLAN.weeks||{}).forEach(w=>(PLAN.weeks[w]||[]).forEach(r=>
+    (r.res||[]).forEach((x,i)=>{ const k=resKey(x);
+      (map[k]=map[k]||[]).push({w:+w, ref:r.ref||'', id:r.id, i:i}); })));
+  return map;
+}
+function usageOf(k){ return planUsage()[k]||[]; }
+function usageLabel(list, skipId){
+  const out=(list||[]).filter(u=>skipId==null || String(u.id)!==String(skipId));
+  if(!out.length) return '';
+  const seen=[], bits=[];
+  out.forEach(u=>{ const s='W'+u.w+(u.ref?' · '+u.ref:''); if(seen.indexOf(s)<0){ seen.push(s); bits.push(s); } });
+  return bits.slice(0,3).join(', ')+(bits.length>3?' +'+(bits.length-3)+' more':'');
+}
+/* how many times each key appears inside one week */
+function dupsIn(w){
+  const c={};
+  planRows(w).forEach(r=>(r.res||[]).forEach(x=>{ const k=resKey(x); c[k]=(c[k]||0)+1; }));
+  return c;
+}
+function dupCount(w){
+  const c=dupsIn(w); let n=0;
+  Object.keys(c).forEach(k=>{ if(c[k]>1) n+=c[k]-1; });
+  return n;
+}
+/* keep the first copy in row order, drop the rest */
+function dupClean(w){
+  const seen={}; let removed=0;
+  planRows(w).forEach(r=>{
+    r.res=(r.res||[]).filter(x=>{ const k=resKey(x);
+      if(seen[k]){ removed++; return false; } seen[k]=1; return true; });
+  });
+  if(removed){ asgStampRows(w); planSave(); planWeekRender(w); planSummary(); }
+  return removed;
+}
+function mvToast(t){
+  const old=document.getElementById('mvtoast'); if(old) old.remove();
+  const d=document.createElement('div'); d.className='mvtoast'; d.id='mvtoast'; d.textContent=t;
+  document.body.appendChild(d);
+  setTimeout(()=>{ const x=document.getElementById('mvtoast'); if(x===d) d.remove(); },3200);
+}
+/* the one place a resource actually changes hands */
+function resMove(fromW,fromId,idx,toW,toId){
+  fromW=+fromW; toW=+toW;
+  const src=planRow(fromW,fromId), dst=planRow(toW,toId);
+  if(!src||!dst) return 'that row is no longer there';
+  if(weekSaved(toW)) return 'Week '+toW+' is saved — press “Edit this week” on it first';
+  const item=(src.res||[])[idx];
+  if(!item) return 'nothing to move';
+  if(String(fromId)===String(toId)) return '';
+  if((dst.res||[]).some(x=>resKey(x)===resKey(item)))
+    return 'that lesson already has “'+item.title+'”';
+  src.res.splice(idx,1);
+  const copy=Object.assign({},item);
+  if(fromW!==toW){ delete copy.asg; delete copy.asgLabel; delete copy.asgName; }
+  dst.res=rdSort((dst.res||[]).concat([copy]));
+  if(fromW!==toW){          /* an assignment belongs to its week, so drop it from the old one */
+    asgList(fromW).forEach(a=>{ a.items=(a.items||[]).filter(x=>asgKey(x)!==asgKey(item)); });
+    PLAN.asg[fromW]=asgList(fromW).filter(a=>(a.items||[]).length);
+  }
+  asgStampRows(fromW); asgStampRows(toW);
+  planSave(); planWeekRender(fromW); if(toW!==fromW) planWeekRender(toW); planSummary();
+  mvToast('Moved “'+item.title+'” to W'+toW+(dst.ref?' · '+dst.ref:'')
+    +(fromW!==toW && item.asgLabel?' — it left assignment '+item.asgLabel:''));
+  return '';
+}
+/* ---- drag and drop ---- */
+let MVDRAG=null;
+ONX(document,'dragstart',function(e){
+  const chip=e.target.closest && e.target.closest('.chip[data-mvi]');
+  if(!chip) return;
+  const row=chip.closest('.prow'); if(!row) return;
+  MVDRAG={w:+row.dataset.w, id:row.dataset.id, i:+chip.dataset.mvi, title:chip.dataset.mvt||''};
+  chip.classList.add('dragging');
+  try{ e.dataTransfer.setData('text/plain', MVDRAG.title);
+       e.dataTransfer.effectAllowed='move'; }catch(err){}
+});
+ONX(document,'dragend',function(){
+  MVDRAG=null;
+  document.querySelectorAll('.chip.dragging').forEach(c=>c.classList.remove('dragging'));
+  document.querySelectorAll('.dropok').forEach(c=>c.classList.remove('dropok'));
+});
+ONX(document,'dragover',function(e){
+  if(!MVDRAG) return;
+  const row=e.target.closest && e.target.closest('.prow');
+  if(row){ e.preventDefault(); try{ e.dataTransfer.dropEffect='move'; }catch(err){}
+    if(!row.classList.contains('dropok')){
+      document.querySelectorAll('.dropok').forEach(c=>c.classList.remove('dropok'));
+      row.classList.add('dropok'); }
+  }
+});
+ONX(document,'dragleave',function(e){
+  const row=e.target.closest && e.target.closest('.prow');
+  if(row && !row.contains(e.relatedTarget)) row.classList.remove('dropok');
+});
+ONX(document,'drop',function(e){
+  if(!MVDRAG) return;
+  const row=e.target.closest && e.target.closest('.prow');
+  if(!row) return;
+  e.preventDefault();
+  document.querySelectorAll('.dropok').forEach(c=>c.classList.remove('dropok'));
+  const d=MVDRAG; MVDRAG=null;
+  const err=resMove(d.w,d.id,d.i,+row.dataset.w,row.dataset.id);
+  if(err) mvToast(err);
+});
+/* ---- the ⇄ chooser, which is what works on a tablet ---- */
+function mvPop(chip){
+  document.querySelectorAll('.mvpop').forEach(p=>p.remove());
+  const row=chip.closest('.prow'); if(!row) return;
+  const fromW=+row.dataset.w, fromId=row.dataset.id, idx=+chip.dataset.mvi;
+  const item=(planRow(fromW,fromId)||{res:[]}).res[idx]; if(!item) return;
+  const weeks=Object.keys(PACE.trimmed.plan.reduce((a,c)=>{a[c.week]=1;return a;},{}))
+    .map(Number).sort((a,b)=>a-b);
+  const pop=document.createElement('div'); pop.className='mvpop';
+  const rowsFor=w=>planRows(w).map(r=>'<option value="'+r.id+'"'+(String(r.id)===String(fromId)&&w===fromW?' selected':'')
+      +'>'+esc(r.ref?r.ref+' — '+(TITLEBY[r.ref]||''):'(row with no lesson)')+'</option>').join('')
+    || '<option value="">no lessons in that week yet</option>';
+  pop.innerHTML='<h6>Move this resource</h6>'
+    +'<p><strong>'+esc(item.title)+'</strong><br>now on W'+fromW
+    +(planRow(fromW,fromId).ref?' · '+esc(planRow(fromW,fromId).ref):'')+'</p>'
+    +'<select id="mvw">'+weeks.map(w=>'<option value="'+w+'"'+(w===fromW?' selected':'')
+      +'>Week '+w+(weekSaved(w)?' — saved':'')+'</option>').join('')+'</select>'
+    +'<select id="mvl">'+rowsFor(fromW)+'</select>'
+    +'<div class="row"><button type="button" class="btn tiny primary" id="mvgo">Move</button>'
+    +'<button type="button" class="btn tiny" id="mvx">Cancel</button></div>';
+  document.body.appendChild(pop);
+  const r=chip.getBoundingClientRect();
+  pop.style.top=(window.scrollY+r.bottom+7)+'px';
+  pop.style.left=Math.max(10,Math.min(window.scrollX+r.left, window.scrollX+innerWidth-305))+'px';
+  pop.querySelector('#mvw').addEventListener('change',ev=>{
+    pop.querySelector('#mvl').innerHTML=rowsFor(+ev.target.value); });
+  pop.querySelector('#mvx').addEventListener('click',()=>pop.remove());
+  pop.querySelector('#mvgo').addEventListener('click',()=>{
+    const toW=+pop.querySelector('#mvw').value, toId=pop.querySelector('#mvl').value;
+    pop.remove();
+    if(!toId) return mvToast('that week has no lesson rows yet — add one first');
+    const err=resMove(fromW,fromId,idx,toW,toId);
+    if(err) mvToast(err);
+  });
+  setTimeout(()=>{
+    const off=function(ev){ if(!pop.contains(ev.target)){ pop.remove();
+      document.removeEventListener('mousedown',off); } };
+    document.addEventListener('mousedown',off);
+  },0);
+}
 /* ================= assignments ================= */
 const ASGTYPES=['IXL skills','IXL assignment','IXL quiz','Schoology assignment','Schoology quiz',
   'Reveal assignment','Reveal quiz','Khan assignment','CK-12 assignment','Paper / worksheet',
@@ -7540,7 +8240,9 @@ function rdSelBar(){
     body.parentNode.insertBefore(bar,body);
   }
   const by={}; [...RDSEL.values()].forEach(r=>{ const g=RGRP(r); by[g]=(by[g]||0)+1; });
+  const already=[...RDSEL.values()].filter(r=>usageLabel(usageOf(rdKey(r)),RDTARGET.id)).length;
   bar.innerHTML='<b>'+RDSEL.size+' selected</b> — kept while you move between tabs · '
+    +(already?'<span style="color:#8a5a00;font-weight:700">'+already+' already on your plan</span> · ':'')
     +Object.keys(by).map(g=>esc((RGRPNAME[g]||g).split(' ')[0])+' '+by[g]).join(' · ')
     +' <button type="button" id="rdselclear">Clear</button>';
   const add=document.getElementById('rdadd');
@@ -7633,6 +8335,9 @@ function rdFill(){
         +'" title="also in the '+esc(r.plan)+'">'+esc(r.plan)+'</span>':'')
       +(asgLabelFor(RDTARGET.week,r)?'<span class="asgmark" title="already in an assignment">'
         +asgLabelFor(RDTARGET.week,r)+'</span>':'')
+      +(function(){ const u=usageLabel(usageOf(rdKey(r)),RDTARGET.id);
+        return u?'<span class="usedb" title="already on your plan — adding it again makes a '
+          +'duplicate">used '+esc(u)+'</span>':''; })()
       +' <span class="meta">'+esc(r.kind||r.src)+(r.code?' · ['+esc(r.code)+']':'')+(r.note?' · '+esc(r.note):'')
       +(r.forRef&&(!row.ref||r.forRef!==row.ref)?' · from '+esc(r.forRef):'')+'</span>'
       +(r.url?'<a href="'+esc(r.url)+'" target="_blank" rel="noopener">open</a>':'')+'</label></div>';
@@ -7703,6 +8408,7 @@ function rdAddSelected(asAssignment){
 
 /* ================= teacher entry: rendering ================= */
 function planRowHTML(w,r){
+  const DUPW=dupsIn(w);
   const units=Object.keys(PUT).sort((a,b)=>a-b);
   const les=PLES.filter(l=>!r.unit || l.unit===String(r.unit));
   const known = r.ref && PLES.some(l=>l.ref===r.ref);
@@ -7725,12 +8431,18 @@ function planRowHTML(w,r){
    +'</div>'
    + ((KCBY[r.ref]||[]).length ? '<div class="chips"><span class="kcbadge">★ '+esc((KCBY[r.ref]||[]).join(', '))+'</span></div>' : '')
    + ((r.res||[]).length ? '<div class="chips">'+(r.res=rdSort(r.res)).map((x,i)=>
-       '<span class="chip '+RGRP(x)+'">'
+       '<span class="chip '+RGRP(x)+(DUPW[resKey(x)]>1?' isdup':'')+'" draggable="true" data-mvi="'+i+'"'
+       +' data-mvt="'+esc(x.title)+'" title="drag me onto another lesson, or use the arrows">'
+       +(DUPW[resKey(x)]>1?'<span class="dupb" title="added '+DUPW[resKey(x)]
+         +' times in this week">dup</span>':'')
        +(x.asgLabel?'<span class="asgb" title="'+esc(x.asgName||'assignment')+'">'+esc(x.asgLabel)+'</span>':'')
        +'<span class="src">'+esc(x.src)+'</span>'
        +'<span class="ktype">'+esc(rdTypeWord(x))+'</span>'+snum(x.num)
        + resLinkHTML(x)
-       +'<button type="button" class="x pchipdel" data-i="'+i+'" aria-label="Remove resource">×</button></span>').join('')+'</div>' : '')
+       +'<button type="button" class="x pchipmv" data-i="'+i+'" '
+       +'aria-label="Move to another lesson or week" title="move to another lesson or week">⇄</button>'
+       +'<button type="button" class="x pchipdel" data-i="'+i+'" aria-label="Remove resource">×</button>'
+       +'</span>').join('')+'</div>' : '')
    +'</div>';
 }
 /* the bare type word for a chip: skill, video, lesson, exercise, article */
@@ -7779,6 +8491,10 @@ function planWeekBodyHTML(w){
    +(weekSaved(w)&&rows.length?'<span class="savedchip">&#10003; saved'
      +(((PLAN.state||{})[w]||{}).savedAt?' · '+new Date(PLAN.state[w].savedAt).toLocaleDateString():'')+'</span>':'')
    +'</div>'
+   + (dupCount(w)?'<div class="dupwarn"><span>&#9888; '+dupCount(w)+' duplicate resource'
+       +(dupCount(w)===1?'':'s')+' in this week — the same link is on more than one lesson.</span>'
+       +(weekSaved(w)&&rows.length?'':'<button type="button" class="pdupfix">Remove the extra copies</button>')
+       +'</div>':'')
    + asgPanelHTML(w, weekSaved(w)&&rows.length>0, rows.length>0)
    + (weekSaved(w)&&rows.length
       ? planWeekSummaryHTML(w,rows)
@@ -7899,6 +8615,10 @@ _on(document,'click', function(e){
     cbs.forEach(c=>{ c.checked=on; const r=RDLIST[+c.dataset.i];
       if(r){ if(on) RDSEL.set(rdKey(r),r); else RDSEL.delete(rdKey(r)); } });
     t.textContent = on ? 'Unselect all shown' : 'Select all shown'; rdSelBar(); return; }
+  if(t.classList.contains('pdupfix')){
+    const card0=t.closest('.pw'); if(card0){ const n=dupClean(+card0.dataset.w);
+      mvToast(n?('Removed '+n+' duplicate'+(n===1?'':'s')):'nothing to remove'); }
+    return; }
   const abox0=t.closest('.asgitem');
   if(abox0 && t.classList.contains('asgdel')){
     asgDelete(+abox0.dataset.w, abox0.dataset.asg);
@@ -7923,6 +8643,7 @@ _on(document,'click', function(e){
     PLAN.weeks[w]=planRows(w).filter(r=>String(r.id)!==String(id));
     planSave(); planWeekRender(w); planSummary(); return; }
   if(t.classList.contains('pres')){ rdOpen(w,id); return; }
+  if(t.classList.contains('pchipmv')){ mvPop(t.closest('.chip')); return; }
   if(t.classList.contains('phdr')){ const r=planRow(w,id); hdOpen(r&&r.ref); return; }
   if(t.classList.contains('pasg')){
     rdOpen(w,id);
