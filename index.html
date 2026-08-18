@@ -11475,6 +11475,7 @@ function lpDownloadXlsx(){
       <button type="button" class="btn" id="nlprint">Print / PDF</button>
       <button type="button" class="btn" id="nlsave">Download .html</button>
       <button type="button" class="btn" id="nlsaveeach">.html per class</button>
+      <button type="button" class="btn" id="nlmaileach">Email .html per class</button>
     </div></div>
 </div>
 <p class="nlpicks" id="nlpicks"></p>
@@ -11570,12 +11571,28 @@ function nlStrip(h){
   return String(h).replace(/ contenteditable="true"/g,'')
     .replace(/<div class="nlpg[^"]*">[\s\S]*?<\/div>/g,'');
 }
+/* the same type and the same box model the app itself uses, or the copy looks like a stranger.
+   named families come first: inside a picture or an email client "system-ui" can land on a
+   serif, and then every line of the newsletter changes shape. */
+const NLFONT='"Segoe UI", Roboto, "Helvetica Neue", Helvetica, Arial, sans-serif';
+function nlBodyFont(){
+  const b=getComputedStyle(document.body);
+  return {fam:NLFONT, size:b.fontSize||'15px', lh:'1.5'};
+}
 function nlCssDoc(){
-  return ':root{--ring:#dfe4ec;--grid:#e7ebf2;--accent:#1d4ed8;--muted:#6b7280;--ink:#151922;'
+  const f=nlBodyFont();
+  return '*,*::before,*::after{box-sizing:border-box}\n'
+    /* the handful of app-wide rules the newsletter inherits, or the copy sets its own type */
+    +'h1{font-size:25px;margin:0 0 4px;letter-spacing:-.01em}\n'
+    +'h2{font-size:13px;text-transform:uppercase;letter-spacing:.07em;color:#6b7280;'
+    +'margin:0 0 12px;font-weight:600}\n'
+    +':root{--ring:#dfe4ec;--grid:#e7ebf2;--accent:#1d4ed8;--muted:#6b7280;--ink:#151922;'
     +'--ink2:#39404c;--plane:#fff;--surface:#fff}\n'+NLCSS+'\n'+NLXCSS
-    +'\nbody{margin:0;background:#eef1f6;font:400 14px/1.5 -apple-system,BlinkMacSystemFont,'
-    +'"Segoe UI",Roboto,Helvetica,Arial,sans-serif;color:#151922}'
-    +'.nlwrap{padding:18px;max-width:1180px;margin:0 auto}.nlteach{white-space:pre-wrap}'
+    +'\nbody{margin:0;background:#eef1f6;color:#151922;font-family:'+f.fam
+    +';font-size:'+f.size+';font-weight:400;line-height:'+f.lh+'}'
+    /* the font goes on the wrapper too: inside an SVG picture there is no <body> to inherit from */
+    +'.nlwrap{padding:18px;max-width:1180px;margin:0 auto;font-family:'+f.fam
+    +';font-size:'+f.size+';line-height:'+f.lh+';color:#151922}.nlteach{white-space:pre-wrap}'
     +'.nlteach:empty{display:none}.nlteach:empty:before{content:""}'
     +'\n@page{size:letter '+nlOr()+';margin:'+(nlOr()==='landscape'?'.36in':'.42in')+'}';
 }
@@ -11616,28 +11633,60 @@ function nlPrintNow(only){
   window.addEventListener('afterprint',after);
   setTimeout(()=>{ window.print(); setTimeout(done,2500); },40);
 }
+/* the clone, ready to be drawn or emailed: no buttons, no caret, no shadow */
+function nlClone(el){
+  const clone=el.cloneNode(true);
+  clone.querySelectorAll('.nlpg').forEach(n=>n.remove());
+  clone.querySelectorAll('[contenteditable]').forEach(n=>n.removeAttribute('contenteditable'));
+  return clone;
+}
+/* how tall is that page under the export stylesheet? measure it, do not guess:
+   an off-screen iframe carries the very same CSS the picture will use */
+function nlMeasure(inner,css,w){
+  const f=document.createElement('iframe');
+  f.setAttribute('aria-hidden','true');
+  f.style.cssText='position:fixed;left:-20000px;top:0;border:0;visibility:hidden;'
+    +'width:'+(w+40)+'px;height:400px';
+  document.body.appendChild(f);
+  let box={w:w,h:600};
+  try{
+    const d=f.contentDocument;
+    d.open();
+    d.write('<!doctype html><html><head><meta charset="utf-8"><style>'+css
+      +'\nhtml,body{background:#fff}.nlwrap{padding:0!important;max-width:none!important;'
+      +'width:'+w+'px}</style></head><body><div class="nlwrap"></div></body></html>');
+    d.close();
+    const wrap=d.querySelector('.nlwrap');
+    wrap.innerHTML=inner;
+    const pg=wrap.querySelector('.nlpage')||wrap;
+    const r=pg.getBoundingClientRect();
+    box={w:Math.ceil(r.width), h:Math.ceil(r.height)};
+  }catch(e){}
+  f.remove();
+  return box;
+}
 /* the page as a PNG: clone, wrap in an SVG foreignObject, draw it on a canvas */
 function nlPNG(el,scale){
   return new Promise((res,rej)=>{
-    const r=el.getBoundingClientRect(), w=Math.ceil(r.width), h=Math.ceil(r.height);
-    const clone=el.cloneNode(true);
-    clone.querySelectorAll('.nlpg').forEach(n=>n.remove());
-    clone.querySelectorAll('[contenteditable]').forEach(n=>n.removeAttribute('contenteditable'));
+    const clone=nlClone(el);
+    const w=Math.ceil(el.getBoundingClientRect().width);
     clone.setAttribute('style',(el.getAttribute('style')||'')
       +';width:'+w+'px;margin:0;box-shadow:none;border-radius:0');
     const css=nlCssDoc()+'\n.nlteach:empty:before{content:""!important}'
       +'\n.nlteach:empty{display:block!important}';
+    const inner=new XMLSerializer().serializeToString(clone);
+    const box=nlMeasure(inner,css,w);
+    const W=box.w, H=box.h+2;                       /* a hair of slack, never a crop */
     const body='<div xmlns="http://www.w3.org/1999/xhtml" class="nlwrap" '
-      +'style="padding:0;max-width:none;background:#fff">'
-      + new XMLSerializer().serializeToString(clone) + '</div>';
-    const svg='<svg xmlns="http://www.w3.org/2000/svg" width="'+Math.round(w*scale)+'" height="'
-      +Math.round(h*scale)+'" viewBox="0 0 '+w+' '+h+'">'
+      +'style="padding:0;max-width:none;width:'+w+'px;background:#fff">'+inner+'</div>';
+    const svg='<svg xmlns="http://www.w3.org/2000/svg" width="'+Math.round(W*scale)+'" height="'
+      +Math.round(H*scale)+'" viewBox="0 0 '+W+' '+H+'">'
       +'<style><![CDATA['+css+']]></style>'
       +'<foreignObject x="0" y="0" width="100%" height="100%">'+body+'</foreignObject></svg>';
     const img=new Image();
     img.onload=()=>{
       const cv=document.createElement('canvas');
-      cv.width=Math.round(w*scale); cv.height=Math.round(h*scale);
+      cv.width=Math.round(W*scale); cv.height=Math.round(H*scale);
       const g=cv.getContext('2d'); g.fillStyle='#fff'; g.fillRect(0,0,cv.width,cv.height);
       g.drawImage(img,0,0,cv.width,cv.height);
       cv.toBlob(b=>b?res(b):rej(new Error('no png')),'image/png');
@@ -11645,6 +11694,150 @@ function nlPNG(el,scale){
     img.onerror=()=>rej(new Error('the page could not be drawn'));
     img.src='data:image/svg+xml;charset=utf-8,'+encodeURIComponent(svg);
   });
+}
+/* ================= a version email can actually render ================= */
+/* Gmail, Outlook and Schoology's editor all throw away <style>, grid and flex. So: one column,
+   every rule written onto the element itself, 640px wide so it reads on a phone. */
+const NLIN=['font-family','font-size','font-weight','font-style','line-height','color',
+  'background-color','text-align','text-transform','letter-spacing','white-space',
+  'padding-top','padding-right','padding-bottom','padding-left',
+  'margin-top','margin-right','margin-bottom','margin-left',
+  'border-top-width','border-top-style','border-top-color',
+  'border-right-width','border-right-style','border-right-color',
+  'border-bottom-width','border-bottom-style','border-bottom-color',
+  'border-left-width','border-left-style','border-left-color',
+  'border-top-left-radius','border-top-right-radius','border-bottom-right-radius',
+  'border-bottom-left-radius','text-decoration-line','vertical-align','list-style-type'];
+function nlEmailHTML(c){
+  const el=nlPageEl(c); if(!el) return '';
+  const css=nlCssDoc()+'\n.nlteach:empty{display:block!important}'
+    +'\n.nlteach:empty:before{content:""!important}';
+  const f=document.createElement('iframe');
+  f.setAttribute('aria-hidden','true');
+  f.style.cssText='position:fixed;left:-20000px;top:0;border:0;visibility:hidden;width:700px;height:600px';
+  document.body.appendChild(f);
+  let out='';
+  try{
+    const d=f.contentDocument, W=f.contentWindow;
+    d.open();
+    d.write('<!doctype html><html><head><meta charset="utf-8"><style>'+css
+      +'\nhtml,body{background:#fff}.nlwrap{padding:0!important;max-width:none!important;width:640px}'
+      +'</style></head><body><div class="nlwrap"></div></body></html>');
+    d.close();
+    const wrap=d.querySelector('.nlwrap');
+    wrap.innerHTML=nlClone(el).outerHTML;
+    const pg=wrap.querySelector('.nlpage');
+    pg.style.width='640px'; pg.style.margin='0'; pg.style.boxShadow='none';
+    /* two columns become one, in reading order */
+    pg.querySelectorAll('.nlcols').forEach(g=>{
+      [...g.children].forEach(col=>{ while(col.firstChild) g.parentNode.insertBefore(col.firstChild,g); });
+      g.remove();
+    });
+    /* the flex rows stack */
+    pg.querySelectorAll('.nlmast,.nlfoot,.nlwords').forEach(x=>{ x.style.display='block'; });
+    pg.querySelectorAll('.nlmast>div,.nlfoot>span').forEach(x=>{
+      x.style.display='block'; x.style.textAlign='left'; });
+    pg.querySelectorAll('.nlmast .wk').forEach(x=>{ x.style.marginTop='6px'; });
+    pg.querySelectorAll('.nlword,.nllink .kd,.nlles .lt .rf,.nlles .lt .st,.nlstd .c,.nlstd .k')
+      .forEach(x=>{ x.style.display='inline-block'; });
+    pg.querySelectorAll('.nlword').forEach(x=>{ x.style.margin='0 4px 4px 0'; });
+    /* an empty teacher box is a blank rectangle in an email — leave it out */
+    pg.querySelectorAll('.nlteach').forEach(x=>{
+      if(!String(x.textContent||'').trim()) (x.closest('.nlsec')||x).remove(); });
+    /* read every computed rule first, THEN write it and drop the classes — strip a class too
+       early and its descendants lose the rules that were about to be copied */
+    const nodes=[pg].concat([...pg.querySelectorAll('*')]);
+    const styles=nodes.map(n=>{
+      const cs=W.getComputedStyle(n); let s='';
+      NLIN.forEach(k=>{
+        const v=cs.getPropertyValue(k); if(!v) return;
+        if(/^(margin|padding)/.test(k) && v==='0px') return;
+        if(/^border-.*-width$/.test(k) && v==='0px') return;
+        if(/^border-.*-(style)$/.test(k) && v==='none') return;
+        if(/radius$/.test(k) && v==='0px') return;
+        if(k==='background-color' && (v==='rgba(0, 0, 0, 0)'||v==='transparent')) return;
+        if(k==='text-decoration-line' && v==='none') return;
+        if(k==='text-transform' && v==='none') return;
+        if(k==='letter-spacing' && v==='normal') return;
+        if(k==='white-space' && v==='normal') return;
+        if(k==='list-style-type' && n.tagName!=='UL' && n.tagName!=='OL' && n.tagName!=='LI') return;
+        s+=k+':'+v+';';
+      });
+      const dis=cs.display;
+      if(dis==='inline-block'||dis==='list-item'||dis==='block'||dis==='inline') s+='display:'+dis+';';
+      if(n===pg) s+='width:640px;max-width:100%;';
+      return s;
+    });
+    nodes.forEach((n,i)=>{
+      n.setAttribute('style',styles[i]);
+      n.removeAttribute('class');
+      n.removeAttribute('data-nlc'); n.removeAttribute('data-ph'); n.removeAttribute('data-nlteach');
+    });
+    out='<div style="background:#f4f6fa;padding:12px 0;font-family:'+NLFONT+'">'
+      +'<div style="margin:0 auto;max-width:664px">'+pg.outerHTML+'</div></div>';
+  }catch(e){ out=''; }
+  f.remove();
+  return out;
+}
+function nlCopyEmail(c){
+  const html=nlEmailHTML(c);
+  if(!html) return nlToast('that class is not on the page');
+  const text=(nlPageEl(c).innerText||'').replace(/\n{3,}/g,'\n\n');
+  const done=()=>nlToast(LPBANK[c].tab+' copied for email — paste it into Gmail or a Schoology page');
+  if(window.ClipboardItem && navigator.clipboard && navigator.clipboard.write){
+    navigator.clipboard.write([new ClipboardItem({
+      'text/html':new Blob([html],{type:'text/html'}),
+      'text/plain':new Blob([text],{type:'text/plain'})})]).then(done)
+      .catch(()=>{ nlSaveBlob(new Blob([html],{type:'text/html'}),nlFileBase(c)+'_email.html');
+        nlToast('the clipboard was blocked — saved the email version instead'); });
+  }else{
+    nlSaveBlob(new Blob([html],{type:'text/html'}),nlFileBase(c)+'_email.html');
+    nlToast('this browser cannot copy rich text — saved the email version instead');
+  }
+}
+function nlSaveEmail(c){
+  const html=nlEmailHTML(c);
+  if(!html) return nlToast('that class is not on the page');
+  nlSaveBlob(new Blob(['<!doctype html><html><head><meta charset="utf-8"><title>'
+    +nesc(LPBANK[c].tab)+' newsletter</title></head><body style="margin:0">'+html+'</body></html>'],
+    {type:'text/html'}), nlFileBase(c)+'_email.html');
+  nlToast('email version saved — paste the body into a mail-merge script');
+}
+/* ================= a Schoology web package: a zip whose index.html is the page ================= */
+function nlCrc(u8){
+  let t=nlCrc.t;
+  if(!t){ t=nlCrc.t=[]; for(let n=0;n<256;n++){ let c=n;
+    for(let k=0;k<8;k++) c=c&1?0xEDB88320^(c>>>1):c>>>1; t[n]=c>>>0; } }
+  let c=0^-1;
+  for(let i=0;i<u8.length;i++) c=(c>>>8)^t[(c^u8[i])&0xFF];
+  return (c^-1)>>>0;
+}
+function nlZip(files){
+  const enc=new TextEncoder(), parts=[], central=[];
+  let off=0;
+  const u16=n=>[n&255,(n>>8)&255], u32=n=>[n&255,(n>>8)&255,(n>>16)&255,(n>>24)&255];
+  files.forEach(f=>{
+    const name=enc.encode(f.name), data=enc.encode(f.data), crc=nlCrc(data);
+    const DT=0, DD=((2026-1980)<<9)|(1<<5)|1;      /* a real date, so no unzipper complains */
+    const head=[].concat([0x50,0x4b,0x03,0x04],u16(20),u16(0x0800),u16(0),u16(DT),u16(DD),
+      u32(crc),u32(data.length),u32(data.length),u16(name.length),u16(0));
+    parts.push(new Uint8Array(head),name,data);
+    central.push([].concat([0x50,0x4b,0x01,0x02],u16(20),u16(20),u16(0x0800),u16(0),u16(DT),u16(DD),
+      u32(crc),u32(data.length),u32(data.length),u16(name.length),u16(0),u16(0),u16(0),u16(0),
+      u32(0),u32(off),Array.from(name)));
+    off+=head.length+name.length+data.length;
+  });
+  const cd=[].concat.apply([],central);
+  const end=[].concat([0x50,0x4b,0x05,0x06],u16(0),u16(0),u16(files.length),u16(files.length),
+    u32(cd.length),u32(off),u16(0));
+  return new Blob(parts.concat([new Uint8Array(cd),new Uint8Array(end)]),{type:'application/zip'});
+}
+function nlSchoologyZip(c){
+  const el=nlPageEl(c); if(!el) return nlToast('that class is not on the page');
+  const week=document.getElementById('nlweek').value;
+  const doc=nlDocHTML(el.outerHTML,LPBANK[c].tab+' — Week '+week+' newsletter');
+  nlSaveBlob(nlZip([{name:'index.html',data:doc}]), nlFileBase(c)+'_schoology.zip');
+  nlToast('zip saved — Schoology: Add Materials → Add File/Link → Web content package');
 }
 function nlSavePNG(c){
   const el=nlPageEl(c); if(!el) return;
@@ -11861,6 +12054,8 @@ function nlBuild(){
         +'<button type="button" class="nlpb" data-nlhtml="'+c+'">Save .html</button>'
         +'<button type="button" class="nlpb" data-nlcopy="'+c+'">Copy image</button>'
         +'<button type="button" class="nlpb" data-nlpng="'+c+'">Save PNG</button>'
+        +'<button type="button" class="nlpb" data-nlmail="'+c+'">Copy for email</button>'
+        +'<button type="button" class="nlpb" data-nlzip="'+c+'">Schoology .zip</button>'
       +'</div>'
       +'<div class="nlmast"><div><p class="school">Arkansas Online School &middot; Mathematics</p>'
       +'<h2>'+nesc(B.tab)+'</h2><p class="tag">'+nesc(B.book)+' &middot; Week '+week+' newsletter for '
@@ -11922,6 +12117,12 @@ function nlDownload(){
   _on(document.getElementById('nlprint'),'click',()=>nlPrintNow(null));
   _on(document.getElementById('nlsave'),'click',nlDownload);
   _on(document.getElementById('nlsaveeach'),'click',nlDownloadEach);
+  _on(document.getElementById('nlmaileach'),'click',()=>{
+    const els=[...document.querySelectorAll('#nlout .nlpage[data-nlc]')];
+    if(!els.length) return nlToast('nothing to save yet');
+    els.forEach((el,i)=>setTimeout(()=>nlSaveEmail(el.dataset.nlc),i*350));
+    nlToast(els.length+' email version'+(els.length===1?'':'s')+' — ready for a mail merge');
+  });
   /* the extra stylesheet lives in the page as well as in the download */
   if(!document.getElementById('nlxcss')){
     const st=document.createElement('style'); st.id='nlxcss'; st.textContent=NLXCSS;
@@ -11953,6 +12154,8 @@ function nlDownload(){
     if(d.nlhtml) return nlDownloadOne(d.nlhtml);
     if(d.nlcopy) return nlCopyPNG(d.nlcopy);
     if(d.nlpng) return nlSavePNG(d.nlpng);
+    if(d.nlmail) return nlCopyEmail(d.nlmail);
+    if(d.nlzip) return nlSchoologyZip(d.nlzip);
   });
   const t=document.getElementById('theme');
   if(t) _on(t,'click',()=>{ const dark=document.documentElement.getAttribute('data-theme')==='dark';
