@@ -11466,6 +11466,10 @@ function lpDownloadXlsx(){
   <div class="nlfield"><label>Grade 7 pacing</label><select id="nlsrc7"></select></div>
   <div class="nlfield"><label>Grade 8 pacing</label><select id="nlsrc8"></select></div>
   <div class="nlfield"><label>Algebra 1 pacing</label><select id="nlsrca1"></select></div>
+  <div class="nlfield"><label>Picture</label><select id="nlimg">
+    <option value="post">Post &mdash; narrow, big type</option>
+    <option value="sheet">Sheet &mdash; as printed</option>
+  </select></div>
   <div class="nlfield"><label>Paper</label><select id="nlorient">
     <option value="portrait">Portrait</option><option value="landscape">Landscape</option>
   </select></div>
@@ -11574,7 +11578,8 @@ function nlStrip(h){
 /* the same type and the same box model the app itself uses, or the copy looks like a stranger.
    named families come first: inside a picture or an email client "system-ui" can land on a
    serif, and then every line of the newsletter changes shape. */
-const NLFONT='"Segoe UI", Roboto, "Helvetica Neue", Helvetica, Arial, sans-serif';
+/* single quotes on purpose: this string is dropped into style="…" attributes as well */
+const NLFONT="'Segoe UI', Roboto, 'Helvetica Neue', Helvetica, Arial, sans-serif";
 function nlBodyFont(){
   const b=getComputedStyle(document.body);
   return {fam:NLFONT, size:b.fontSize||'15px', lh:'1.5'};
@@ -11658,7 +11663,7 @@ function nlMeasure(inner,css,w){
     d.close();
     const wrap=d.querySelector('.nlwrap');
     wrap.innerHTML=inner;
-    const pg=wrap.querySelector('.nlpage')||wrap;
+    const pg=wrap.querySelector('.nlpage')||wrap.querySelector('#nlpage')||wrap;
     const r=pg.getBoundingClientRect();
     box={w:Math.ceil(r.width), h:Math.ceil(r.height)};
   }catch(e){}
@@ -11695,6 +11700,34 @@ function nlPNG(el,scale){
     img.src='data:image/svg+xml;charset=utf-8,'+encodeURIComponent(svg);
   });
 }
+/* draw ready-made HTML (already carrying its own inline styles) as a picture */
+function nlPNGFrom(inner,w,scale){
+  return new Promise((res,rej)=>{
+    const css='*,*::before,*::after{box-sizing:border-box}'
+      +'html,body{margin:0;background:#fff}'
+      +'.nlwrap{font-family:'+NLFONT+'}';
+    const box=nlMeasure(inner,css,w);
+    const W=box.w||w, H=box.h+2;
+    const body='<div xmlns="http://www.w3.org/1999/xhtml" class="nlwrap" '
+      +'style="padding:0;max-width:none;width:'+w+'px;background:#fff;font-family:'+NLFONT+'">'
+      +inner+'</div>';
+    const svg='<svg xmlns="http://www.w3.org/2000/svg" width="'+Math.round(W*scale)+'" height="'
+      +Math.round(H*scale)+'" viewBox="0 0 '+W+' '+H+'">'
+      +'<style><![CDATA['+css+']]></style>'
+      +'<foreignObject x="0" y="0" width="100%" height="100%">'+body+'</foreignObject></svg>';
+    const img=new Image();
+    img.onload=()=>{
+      const cv=document.createElement('canvas');
+      cv.width=Math.round(W*scale); cv.height=Math.round(H*scale);
+      const g=cv.getContext('2d'); g.fillStyle='#fff'; g.fillRect(0,0,cv.width,cv.height);
+      g.drawImage(img,0,0,cv.width,cv.height);
+      cv.toBlob(b=>b?res(b):rej(new Error('no png')),'image/png');
+    };
+    img.onerror=()=>rej(new Error('the page could not be drawn'));
+    img.src='data:image/svg+xml;charset=utf-8,'+encodeURIComponent(svg);
+  });
+}
+
 /* ================= a version email can actually render ================= */
 /* Gmail, Outlook and Schoology's editor all throw away <style>, grid and flex. So: one column,
    every rule written onto the element itself, 640px wide so it reads on a phone. */
@@ -11708,7 +11741,9 @@ const NLIN=['font-family','font-size','font-weight','font-style','line-height','
   'border-left-width','border-left-style','border-left-color',
   'border-top-left-radius','border-top-right-radius','border-bottom-right-radius',
   'border-bottom-left-radius','text-decoration-line','vertical-align','list-style-type'];
-function nlEmailHTML(c){
+function nlEmailHTML(c,opt){
+  opt=opt||{};
+  const WID=opt.w||640, FS=opt.fs||1;
   const el=nlPageEl(c); if(!el) return '';
   const css=nlCssDoc()+'\n.nlteach:empty{display:block!important}'
     +'\n.nlteach:empty:before{content:""!important}';
@@ -11721,13 +11756,14 @@ function nlEmailHTML(c){
     const d=f.contentDocument, W=f.contentWindow;
     d.open();
     d.write('<!doctype html><html><head><meta charset="utf-8"><style>'+css
-      +'\nhtml,body{background:#fff}.nlwrap{padding:0!important;max-width:none!important;width:640px}'
-      +'</style></head><body><div class="nlwrap"></div></body></html>');
+      +'\nhtml,body{background:#fff}.nlwrap{padding:0!important;max-width:none!important;width:'
+      +WID+'px}</style></head><body><div class="nlwrap"></div></body></html>');
     d.close();
     const wrap=d.querySelector('.nlwrap');
     wrap.innerHTML=nlClone(el).outerHTML;
     const pg=wrap.querySelector('.nlpage');
-    pg.style.width='640px'; pg.style.margin='0'; pg.style.boxShadow='none';
+    pg.id='nlpage';
+    pg.style.width=WID+'px'; pg.style.margin='0'; pg.style.boxShadow='none';
     /* two columns become one, in reading order */
     pg.querySelectorAll('.nlcols').forEach(g=>{
       [...g.children].forEach(col=>{ while(col.firstChild) g.parentNode.insertBefore(col.firstChild,g); });
@@ -11761,11 +11797,13 @@ function nlEmailHTML(c){
         if(k==='letter-spacing' && v==='normal') return;
         if(k==='white-space' && v==='normal') return;
         if(k==='list-style-type' && n.tagName!=='UL' && n.tagName!=='OL' && n.tagName!=='LI') return;
+        if(FS!==1 && (k==='font-size'||k==='line-height') && /^[\d.]+px$/.test(v))
+          { s+=k+':'+(Math.round(parseFloat(v)*FS*10)/10)+'px;'; return; }
         s+=k+':'+v+';';
       });
       const dis=cs.display;
       if(dis==='inline-block'||dis==='list-item'||dis==='block'||dis==='inline') s+='display:'+dis+';';
-      if(n===pg) s+='width:640px;max-width:100%;';
+      if(n===pg) s+='width:'+WID+'px;max-width:100%;';
       return s;
     });
     nodes.forEach((n,i)=>{
@@ -11773,8 +11811,11 @@ function nlEmailHTML(c){
       n.removeAttribute('class');
       n.removeAttribute('data-nlc'); n.removeAttribute('data-ph'); n.removeAttribute('data-nlteach');
     });
+    /* serialise as XML, not HTML: the same string also has to parse inside an SVG picture,
+       where a bare <br> or <img> would stop the whole thing from drawing */
+    const mark=new XMLSerializer().serializeToString(pg);
     out='<div style="background:#f4f6fa;padding:12px 0;font-family:'+NLFONT+'">'
-      +'<div style="margin:0 auto;max-width:664px">'+pg.outerHTML+'</div></div>';
+      +'<div style="margin:0 auto;max-width:'+(WID+24)+'px">'+mark+'</div></div>';
   }catch(e){ out=''; }
   f.remove();
   return out;
@@ -11839,21 +11880,36 @@ function nlSchoologyZip(c){
   nlSaveBlob(nlZip([{name:'index.html',data:doc}]), nlFileBase(c)+'_schoology.zip');
   nlToast('zip saved — Schoology: Add Materials → Add File/Link → Web content package');
 }
+/* a wide sheet shrunk into a feed column is unreadable, so the picture can also be a narrow,
+   one-column post: same words, type scaled up, 560px wide — about what a phone shows */
+const NLPOSTW=560, NLPOSTFS=1.3;
+function nlImgMode(){
+  const s=document.getElementById('nlimg');
+  return (s&&s.value==='sheet')?'sheet':'post';
+}
+function nlPagePNG(c){
+  const el=nlPageEl(c);
+  if(!el) return Promise.reject(new Error('that class is not on the page'));
+  if(nlImgMode()==='sheet') return nlPNG(el,2);
+  const html=nlEmailHTML(c,{w:NLPOSTW,fs:NLPOSTFS});
+  if(!html) return Promise.reject(new Error('nothing to draw'));
+  return nlPNGFrom(html,NLPOSTW+24,3);
+}
+function nlImgName(c){ return nlFileBase(c)+(nlImgMode()==='post'?'_post':'')+'.png'; }
 function nlSavePNG(c){
-  const el=nlPageEl(c); if(!el) return;
-  nlPNG(el,2).then(b=>{ nlSaveBlob(b,nlFileBase(c)+'.png'); nlToast(LPBANK[c].tab+' saved as a PNG'); })
+  nlPagePNG(c).then(b=>{ nlSaveBlob(b,nlImgName(c));
+    nlToast(LPBANK[c].tab+(nlImgMode()==='post'?' saved as a post picture':' saved as a PNG')); })
     .catch(e=>nlToast('PNG failed — '+e.message));
 }
 function nlCopyPNG(c){
-  const el=nlPageEl(c); if(!el) return;
-  nlPNG(el,2).then(b=>{
+  nlPagePNG(c).then(b=>{
     if(!(window.ClipboardItem && navigator.clipboard && navigator.clipboard.write)){
-      nlSaveBlob(b,nlFileBase(c)+'.png');
+      nlSaveBlob(b,nlImgName(c));
       return nlToast('this browser cannot copy images — saved the PNG instead');
     }
     navigator.clipboard.write([new ClipboardItem({'image/png':b})])
       .then(()=>nlToast(LPBANK[c].tab+' copied — paste it into Schoology, email or Docs'))
-      .catch(()=>{ nlSaveBlob(b,nlFileBase(c)+'.png');
+      .catch(()=>{ nlSaveBlob(b,nlImgName(c));
         nlToast('the clipboard was blocked — saved the PNG instead'); });
   }).catch(e=>nlToast('copy failed — '+e.message));
 }
@@ -12128,6 +12184,13 @@ function nlDownload(){
     const st=document.createElement('style'); st.id='nlxcss'; st.textContent=NLXCSS;
     document.head.appendChild(st);
   }
+  const imsel=document.getElementById('nlimg');
+  let im0=''; try{ im0=localStorage.getItem('armath.nl.img')||''; }catch(e){}
+  imsel.value=(im0==='sheet')?'sheet':'post';
+  _on(imsel,'change',()=>{ try{ localStorage.setItem('armath.nl.img',imsel.value); }catch(e){}
+    nlToast(nlImgMode()==='post'
+      ? 'Copy image now makes a narrow post picture, readable in a Schoology feed'
+      : 'Copy image now makes a picture of the printed sheet'); });
   const orsel=document.getElementById('nlorient');
   let or0=''; try{ or0=localStorage.getItem('armath.nl.orient')||''; }catch(e){}
   orsel.value=(or0==='landscape')?'landscape':'portrait';
