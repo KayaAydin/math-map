@@ -2087,11 +2087,20 @@ function ccSrcWord(x){
   if(/^khan/i.test(s)) return 'KHAN';
   if(/^ck-?\s*12/i.test(s)) return 'CK-12';
   if(/^ixl/i.test(s)) return 'IXL';
+  if(/recording/i.test(s)) return 'RECORDING';
+  if(/textbook/i.test(s)) return 'TEXTBOOK';
   return s.toUpperCase();
 }
 function ccTypeWord(x){
   const k=String(ccKindWord(x)||'').trim();
   return k?k.charAt(0).toUpperCase()+k.slice(1):'';
+}
+/* what a student does with it, for the checklist */
+function ccCkVerb(x){
+  const k=ccKindWord(x);
+  if(k==='video') return 'watch';
+  if(k==='skill'||k==='exercise') return 'practice';
+  return 'open';
 }
 /* the name Schoology shows: source, then type, then the content itself */
 function ccTitleOf(x){
@@ -2112,8 +2121,8 @@ function ccWeek(w, files, tree, seq){
   const kids=[], id=n=>'W'+w+'_'+n;
   const ck=[];
 
-  /* the lesson header pages come first in the checklist, in row order */
-  rows.forEach((r,ri)=>{
+  /* the page that opens a lesson */
+  function emitLesson(r,ri){
     if(!r.ref) return;
     const L=H&&H.lessons?H.lessons[r.ref]:null;
     const e=(typeof hdEdits==='function')?hdEdits(r.ref):{};
@@ -2149,10 +2158,10 @@ function ccWeek(w, files, tree, seq){
     kids.push({t:title, r:id('les'+ri), type:'webcontent', href:f,
                d:'Objective, I can statements, vocabulary and the standard for '+title+'.'});
     ck.push(['read',title,'objective, vocabulary and the standard']);
-  });
+  }
 
-  /* the assignments you marked */
-  asg.forEach((a,ai)=>{
+  /* an assignment you marked */
+  function emitAsg(a,ai){
     const links=(a.items||[]).filter(x=>x.url).map(x=>'<li><a href="'+cx(x.url)
       +'" target="_blank">'+cx((x.num?x.num+' — ':'')+x.title)+'</a></li>').join('');
     const plain=(a.items||[]).filter(x=>!x.url).map(x=>'<li>'+cx(x.title)+'</li>').join('');
@@ -2177,12 +2186,15 @@ function ccWeek(w, files, tree, seq){
                d:(a.type||'Assignment')+(a.due?' · due '+a.due:'')+' · '
                  +(a.items||[]).length+' item'+((a.items||[]).length===1?'':'s')+'.'});
     ck.push(['do',an,(a.type||'')+(a.due?' · due '+a.due:'')]);
-  });
+  }
 
-  /* everything else on the week, as its own link */
+  /* a resource that is not part of an assignment */
   let li=0;
-  rows.forEach(r=>(r.res||[]).forEach(x=>{
-    if(!x.url || inAsg.has(resKey(x))) return;
+  function emitLink(x){
+    if(!x.url){                       /* nothing to open, but it is still work for the week */
+      ck.push([ccCkVerb(x), ccTitleOf(x), x.note||'']);
+      return;
+    }
     const f=id('lnk'+li)+'/weblink.xml';
     const t=ccTitleOf(x);   /* IXL · Skill · A.1 Create dot plots */
     files.push({name:f, data:'<?xml version="1.0" encoding="UTF-8"?>\n'
@@ -2195,10 +2207,33 @@ function ccWeek(w, files, tree, seq){
       +'</webLink>'});
     kids.push({t:t, r:id('lnk'+li), type:'imswl_xmlv1p2', href:f,
                d:(x.src||'')+' · '+ccKindWord(x)+(x.note?' · '+x.note:'')});
-    ck.push([ccKindWord(x)==='video'?'watch':(ccKindWord(x)==='skill'?'practice':'open'), t,
+    ck.push([ccCkVerb(x), t,
              (x.note||'')+(x.plan?(x.note?' · ':'')+'also in the '+x.plan:'')]);
     li++;
-  }));
+  }
+
+  /* ---- the folder follows the week exactly as the Pacing tab shows it ----
+     for every lesson row: the lesson page, then that row's resources in their own order.
+     An assignment lands where its first resource sits, so a marked set of IXL skills
+     appears in the place you put it, not at the end. */
+  const owner=new Map();
+  asg.forEach((a,ai)=>(a.items||[]).forEach(x=>{
+    const k=resKey(x); if(!owner.has(k)) owner.set(k,ai); }));
+  const asgDone=new Set();
+  rows.forEach((r,ri)=>{
+    emitLesson(r,ri);
+    (r.res||[]).forEach(x=>{
+      const k=resKey(x);
+      if(inAsg.has(k)){
+        const ai=owner.has(k)?owner.get(k):-1;
+        if(ai>=0 && !asgDone.has(ai)){ asgDone.add(ai); emitAsg(asg[ai],ai); }
+        return;                       /* the other members are inside that assignment */
+      }
+      emitLink(x);
+    });
+  });
+  /* an assignment whose items are no longer on any row still belongs in the folder */
+  asg.forEach((a,ai)=>{ if(!asgDone.has(ai)){ asgDone.add(ai); emitAsg(a,ai); } });
 
   /* the checklist goes first, and lists everything above in the same order */
   const stds=ccStdsOf(w);
@@ -2555,6 +2590,18 @@ function asgAutoName(items){
   const src=[...new Set(items.map(r=>r.src||'').filter(Boolean))];
   return (src.length===1?src[0]+': ':'')+items[0].title+' + '+(items.length-1)+' more';
 }
+/* not everything you add by hand is work to be graded: a recording, the textbook pages, a page
+   you wrote — those are material. The tick box follows the Type, and you can still override it. */
+function cusIsWork(t){
+  return !/recording|textbook|youtube|video|website|page|doc \/ slides|slides/i.test(String(t||''));
+}
+var CUSONX=(typeof _on==='function')?_on:function(t,e,f,o){ t.addEventListener(e,f,o); };
+CUSONX(document,'change',function(e){
+  const t=e.target;
+  if(!t || t.id!=='cusType') return;
+  const box=document.getElementById('cusAsg');
+  if(box) box.checked=cusIsWork(t.value);
+});
 function asgAutoType(items){
   const one=items.length===1?items[0]:null;
   if(one && /quiz/i.test(one.src+' '+one.kind+' '+one.title)) return /ixl/i.test(one.src)?'IXL quiz':'Schoology quiz';
@@ -2833,6 +2880,8 @@ const RDSRCS=[['all','Everything'],['ixl','IXL'],['khan','Khan Academy'],['ck','
               ['mine','Your links'],['other','Other']];
 function rdKind(r){
   const k=((r.kind||'')+' '+(r.src||'')).toLowerCase();
+  if(/recording|zoom|google meet|webex|teams meeting/.test(k)) return 'videos';
+  if(/textbook/.test(k)) return 'lessons';
   if(/skill/.test(k)) return 'skills';
   if(/video/.test(k)) return 'videos';
   if(/exercise|practice/.test(k)) return 'exercises';
@@ -2842,7 +2891,9 @@ function rdKind(r){
 }
 const CUSTYPES=['IXL quiz','Schoology assignment','Schoology quiz',
   'SCORM package (interactive lesson)','SCORM quiz','Reveal assignment',
-  'Reveal quiz','Reveal ALEKS / eAssessment','YouTube video','Schoology page',
+  'Reveal quiz','Reveal ALEKS / eAssessment',
+  'Live lesson recording','Textbook PDF (lesson pages)',
+  'YouTube video','Schoology page',
   'Google Form','Google Doc / Slides','Quizizz','Kahoot','Desmos activity','Nearpod','Edpuzzle',
   'Khan Academy assignment','Worksheet / PDF','Website','Other'];
 function planCustom(){ if(!PLAN.custom) PLAN.custom=[]; return PLAN.custom; }
@@ -2926,7 +2977,8 @@ function rdCustomFormHTML(){
    +'<label>Note<input id="cusNote" placeholder="optional — due date, period, group"></label>'
    +'</div>'
    +'<p class="ev" style="margin:9px 0 0"><label style="display:inline-flex;gap:6px;align-items:center;'
-   +'font-weight:700"><input type="checkbox" id="cusAsg" checked> This is an assignment '
+   +'font-weight:700"><input type="checkbox" id="cusAsg"'+(cusIsWork(CUSTYPES[0])?' checked':'')
+   +'> This is an assignment '
    +'&mdash; show it in the week&rsquo;s assignment panel</label></p>'
    + (mine.length ? '<h6 class="cusprev">Links you have added before &mdash; tick to reuse</h6>'
       + mine.map((c,i)=>'<div class="rditem"><input type="checkbox" data-cus="'+i+'"><label>'+esc(c.title)
@@ -4484,11 +4536,20 @@ function ccSrcWord(x){
   if(/^khan/i.test(s)) return 'KHAN';
   if(/^ck-?\s*12/i.test(s)) return 'CK-12';
   if(/^ixl/i.test(s)) return 'IXL';
+  if(/recording/i.test(s)) return 'RECORDING';
+  if(/textbook/i.test(s)) return 'TEXTBOOK';
   return s.toUpperCase();
 }
 function ccTypeWord(x){
   const k=String(ccKindWord(x)||'').trim();
   return k?k.charAt(0).toUpperCase()+k.slice(1):'';
+}
+/* what a student does with it, for the checklist */
+function ccCkVerb(x){
+  const k=ccKindWord(x);
+  if(k==='video') return 'watch';
+  if(k==='skill'||k==='exercise') return 'practice';
+  return 'open';
 }
 /* the name Schoology shows: source, then type, then the content itself */
 function ccTitleOf(x){
@@ -4509,8 +4570,8 @@ function ccWeek(w, files, tree, seq){
   const kids=[], id=n=>'W'+w+'_'+n;
   const ck=[];
 
-  /* the lesson header pages come first in the checklist, in row order */
-  rows.forEach((r,ri)=>{
+  /* the page that opens a lesson */
+  function emitLesson(r,ri){
     if(!r.ref) return;
     const L=H&&H.lessons?H.lessons[r.ref]:null;
     const e=(typeof hdEdits==='function')?hdEdits(r.ref):{};
@@ -4546,10 +4607,10 @@ function ccWeek(w, files, tree, seq){
     kids.push({t:title, r:id('les'+ri), type:'webcontent', href:f,
                d:'Objective, I can statements, vocabulary and the standard for '+title+'.'});
     ck.push(['read',title,'objective, vocabulary and the standard']);
-  });
+  }
 
-  /* the assignments you marked */
-  asg.forEach((a,ai)=>{
+  /* an assignment you marked */
+  function emitAsg(a,ai){
     const links=(a.items||[]).filter(x=>x.url).map(x=>'<li><a href="'+cx(x.url)
       +'" target="_blank">'+cx((x.num?x.num+' — ':'')+x.title)+'</a></li>').join('');
     const plain=(a.items||[]).filter(x=>!x.url).map(x=>'<li>'+cx(x.title)+'</li>').join('');
@@ -4574,12 +4635,15 @@ function ccWeek(w, files, tree, seq){
                d:(a.type||'Assignment')+(a.due?' · due '+a.due:'')+' · '
                  +(a.items||[]).length+' item'+((a.items||[]).length===1?'':'s')+'.'});
     ck.push(['do',an,(a.type||'')+(a.due?' · due '+a.due:'')]);
-  });
+  }
 
-  /* everything else on the week, as its own link */
+  /* a resource that is not part of an assignment */
   let li=0;
-  rows.forEach(r=>(r.res||[]).forEach(x=>{
-    if(!x.url || inAsg.has(resKey(x))) return;
+  function emitLink(x){
+    if(!x.url){                       /* nothing to open, but it is still work for the week */
+      ck.push([ccCkVerb(x), ccTitleOf(x), x.note||'']);
+      return;
+    }
     const f=id('lnk'+li)+'/weblink.xml';
     const t=ccTitleOf(x);   /* IXL · Skill · A.1 Create dot plots */
     files.push({name:f, data:'<?xml version="1.0" encoding="UTF-8"?>\n'
@@ -4592,10 +4656,33 @@ function ccWeek(w, files, tree, seq){
       +'</webLink>'});
     kids.push({t:t, r:id('lnk'+li), type:'imswl_xmlv1p2', href:f,
                d:(x.src||'')+' · '+ccKindWord(x)+(x.note?' · '+x.note:'')});
-    ck.push([ccKindWord(x)==='video'?'watch':(ccKindWord(x)==='skill'?'practice':'open'), t,
+    ck.push([ccCkVerb(x), t,
              (x.note||'')+(x.plan?(x.note?' · ':'')+'also in the '+x.plan:'')]);
     li++;
-  }));
+  }
+
+  /* ---- the folder follows the week exactly as the Pacing tab shows it ----
+     for every lesson row: the lesson page, then that row's resources in their own order.
+     An assignment lands where its first resource sits, so a marked set of IXL skills
+     appears in the place you put it, not at the end. */
+  const owner=new Map();
+  asg.forEach((a,ai)=>(a.items||[]).forEach(x=>{
+    const k=resKey(x); if(!owner.has(k)) owner.set(k,ai); }));
+  const asgDone=new Set();
+  rows.forEach((r,ri)=>{
+    emitLesson(r,ri);
+    (r.res||[]).forEach(x=>{
+      const k=resKey(x);
+      if(inAsg.has(k)){
+        const ai=owner.has(k)?owner.get(k):-1;
+        if(ai>=0 && !asgDone.has(ai)){ asgDone.add(ai); emitAsg(asg[ai],ai); }
+        return;                       /* the other members are inside that assignment */
+      }
+      emitLink(x);
+    });
+  });
+  /* an assignment whose items are no longer on any row still belongs in the folder */
+  asg.forEach((a,ai)=>{ if(!asgDone.has(ai)){ asgDone.add(ai); emitAsg(a,ai); } });
 
   /* the checklist goes first, and lists everything above in the same order */
   const stds=ccStdsOf(w);
@@ -4952,6 +5039,18 @@ function asgAutoName(items){
   const src=[...new Set(items.map(r=>r.src||'').filter(Boolean))];
   return (src.length===1?src[0]+': ':'')+items[0].title+' + '+(items.length-1)+' more';
 }
+/* not everything you add by hand is work to be graded: a recording, the textbook pages, a page
+   you wrote — those are material. The tick box follows the Type, and you can still override it. */
+function cusIsWork(t){
+  return !/recording|textbook|youtube|video|website|page|doc \/ slides|slides/i.test(String(t||''));
+}
+var CUSONX=(typeof _on==='function')?_on:function(t,e,f,o){ t.addEventListener(e,f,o); };
+CUSONX(document,'change',function(e){
+  const t=e.target;
+  if(!t || t.id!=='cusType') return;
+  const box=document.getElementById('cusAsg');
+  if(box) box.checked=cusIsWork(t.value);
+});
 function asgAutoType(items){
   const one=items.length===1?items[0]:null;
   if(one && /quiz/i.test(one.src+' '+one.kind+' '+one.title)) return /ixl/i.test(one.src)?'IXL quiz':'Schoology quiz';
@@ -5230,6 +5329,8 @@ const RDSRCS=[['all','Everything'],['ixl','IXL'],['khan','Khan Academy'],['ck','
               ['mine','Your links'],['other','Other']];
 function rdKind(r){
   const k=((r.kind||'')+' '+(r.src||'')).toLowerCase();
+  if(/recording|zoom|google meet|webex|teams meeting/.test(k)) return 'videos';
+  if(/textbook/.test(k)) return 'lessons';
   if(/skill/.test(k)) return 'skills';
   if(/video/.test(k)) return 'videos';
   if(/exercise|practice/.test(k)) return 'exercises';
@@ -5239,7 +5340,9 @@ function rdKind(r){
 }
 const CUSTYPES=['IXL quiz','Schoology assignment','Schoology quiz',
   'SCORM package (interactive lesson)','SCORM quiz','Reveal assignment',
-  'Reveal quiz','Reveal ALEKS / eAssessment','YouTube video','Schoology page',
+  'Reveal quiz','Reveal ALEKS / eAssessment',
+  'Live lesson recording','Textbook PDF (lesson pages)',
+  'YouTube video','Schoology page',
   'Google Form','Google Doc / Slides','Quizizz','Kahoot','Desmos activity','Nearpod','Edpuzzle',
   'Khan Academy assignment','Worksheet / PDF','Website','Other'];
 function planCustom(){ if(!PLAN.custom) PLAN.custom=[]; return PLAN.custom; }
@@ -5323,7 +5426,8 @@ function rdCustomFormHTML(){
    +'<label>Note<input id="cusNote" placeholder="optional — due date, period, group"></label>'
    +'</div>'
    +'<p class="ev" style="margin:9px 0 0"><label style="display:inline-flex;gap:6px;align-items:center;'
-   +'font-weight:700"><input type="checkbox" id="cusAsg" checked> This is an assignment '
+   +'font-weight:700"><input type="checkbox" id="cusAsg"'+(cusIsWork(CUSTYPES[0])?' checked':'')
+   +'> This is an assignment '
    +'&mdash; show it in the week&rsquo;s assignment panel</label></p>'
    + (mine.length ? '<h6 class="cusprev">Links you have added before &mdash; tick to reuse</h6>'
       + mine.map((c,i)=>'<div class="rditem"><input type="checkbox" data-cus="'+i+'"><label>'+esc(c.title)
@@ -6880,11 +6984,20 @@ function ccSrcWord(x){
   if(/^khan/i.test(s)) return 'KHAN';
   if(/^ck-?\s*12/i.test(s)) return 'CK-12';
   if(/^ixl/i.test(s)) return 'IXL';
+  if(/recording/i.test(s)) return 'RECORDING';
+  if(/textbook/i.test(s)) return 'TEXTBOOK';
   return s.toUpperCase();
 }
 function ccTypeWord(x){
   const k=String(ccKindWord(x)||'').trim();
   return k?k.charAt(0).toUpperCase()+k.slice(1):'';
+}
+/* what a student does with it, for the checklist */
+function ccCkVerb(x){
+  const k=ccKindWord(x);
+  if(k==='video') return 'watch';
+  if(k==='skill'||k==='exercise') return 'practice';
+  return 'open';
 }
 /* the name Schoology shows: source, then type, then the content itself */
 function ccTitleOf(x){
@@ -6905,8 +7018,8 @@ function ccWeek(w, files, tree, seq){
   const kids=[], id=n=>'W'+w+'_'+n;
   const ck=[];
 
-  /* the lesson header pages come first in the checklist, in row order */
-  rows.forEach((r,ri)=>{
+  /* the page that opens a lesson */
+  function emitLesson(r,ri){
     if(!r.ref) return;
     const L=H&&H.lessons?H.lessons[r.ref]:null;
     const e=(typeof hdEdits==='function')?hdEdits(r.ref):{};
@@ -6942,10 +7055,10 @@ function ccWeek(w, files, tree, seq){
     kids.push({t:title, r:id('les'+ri), type:'webcontent', href:f,
                d:'Objective, I can statements, vocabulary and the standard for '+title+'.'});
     ck.push(['read',title,'objective, vocabulary and the standard']);
-  });
+  }
 
-  /* the assignments you marked */
-  asg.forEach((a,ai)=>{
+  /* an assignment you marked */
+  function emitAsg(a,ai){
     const links=(a.items||[]).filter(x=>x.url).map(x=>'<li><a href="'+cx(x.url)
       +'" target="_blank">'+cx((x.num?x.num+' — ':'')+x.title)+'</a></li>').join('');
     const plain=(a.items||[]).filter(x=>!x.url).map(x=>'<li>'+cx(x.title)+'</li>').join('');
@@ -6970,12 +7083,15 @@ function ccWeek(w, files, tree, seq){
                d:(a.type||'Assignment')+(a.due?' · due '+a.due:'')+' · '
                  +(a.items||[]).length+' item'+((a.items||[]).length===1?'':'s')+'.'});
     ck.push(['do',an,(a.type||'')+(a.due?' · due '+a.due:'')]);
-  });
+  }
 
-  /* everything else on the week, as its own link */
+  /* a resource that is not part of an assignment */
   let li=0;
-  rows.forEach(r=>(r.res||[]).forEach(x=>{
-    if(!x.url || inAsg.has(resKey(x))) return;
+  function emitLink(x){
+    if(!x.url){                       /* nothing to open, but it is still work for the week */
+      ck.push([ccCkVerb(x), ccTitleOf(x), x.note||'']);
+      return;
+    }
     const f=id('lnk'+li)+'/weblink.xml';
     const t=ccTitleOf(x);   /* IXL · Skill · A.1 Create dot plots */
     files.push({name:f, data:'<?xml version="1.0" encoding="UTF-8"?>\n'
@@ -6988,10 +7104,33 @@ function ccWeek(w, files, tree, seq){
       +'</webLink>'});
     kids.push({t:t, r:id('lnk'+li), type:'imswl_xmlv1p2', href:f,
                d:(x.src||'')+' · '+ccKindWord(x)+(x.note?' · '+x.note:'')});
-    ck.push([ccKindWord(x)==='video'?'watch':(ccKindWord(x)==='skill'?'practice':'open'), t,
+    ck.push([ccCkVerb(x), t,
              (x.note||'')+(x.plan?(x.note?' · ':'')+'also in the '+x.plan:'')]);
     li++;
-  }));
+  }
+
+  /* ---- the folder follows the week exactly as the Pacing tab shows it ----
+     for every lesson row: the lesson page, then that row's resources in their own order.
+     An assignment lands where its first resource sits, so a marked set of IXL skills
+     appears in the place you put it, not at the end. */
+  const owner=new Map();
+  asg.forEach((a,ai)=>(a.items||[]).forEach(x=>{
+    const k=resKey(x); if(!owner.has(k)) owner.set(k,ai); }));
+  const asgDone=new Set();
+  rows.forEach((r,ri)=>{
+    emitLesson(r,ri);
+    (r.res||[]).forEach(x=>{
+      const k=resKey(x);
+      if(inAsg.has(k)){
+        const ai=owner.has(k)?owner.get(k):-1;
+        if(ai>=0 && !asgDone.has(ai)){ asgDone.add(ai); emitAsg(asg[ai],ai); }
+        return;                       /* the other members are inside that assignment */
+      }
+      emitLink(x);
+    });
+  });
+  /* an assignment whose items are no longer on any row still belongs in the folder */
+  asg.forEach((a,ai)=>{ if(!asgDone.has(ai)){ asgDone.add(ai); emitAsg(a,ai); } });
 
   /* the checklist goes first, and lists everything above in the same order */
   const stds=ccStdsOf(w);
@@ -7348,6 +7487,18 @@ function asgAutoName(items){
   const src=[...new Set(items.map(r=>r.src||'').filter(Boolean))];
   return (src.length===1?src[0]+': ':'')+items[0].title+' + '+(items.length-1)+' more';
 }
+/* not everything you add by hand is work to be graded: a recording, the textbook pages, a page
+   you wrote — those are material. The tick box follows the Type, and you can still override it. */
+function cusIsWork(t){
+  return !/recording|textbook|youtube|video|website|page|doc \/ slides|slides/i.test(String(t||''));
+}
+var CUSONX=(typeof _on==='function')?_on:function(t,e,f,o){ t.addEventListener(e,f,o); };
+CUSONX(document,'change',function(e){
+  const t=e.target;
+  if(!t || t.id!=='cusType') return;
+  const box=document.getElementById('cusAsg');
+  if(box) box.checked=cusIsWork(t.value);
+});
 function asgAutoType(items){
   const one=items.length===1?items[0]:null;
   if(one && /quiz/i.test(one.src+' '+one.kind+' '+one.title)) return /ixl/i.test(one.src)?'IXL quiz':'Schoology quiz';
@@ -7626,6 +7777,8 @@ const RDSRCS=[['all','Everything'],['ixl','IXL'],['khan','Khan Academy'],['ck','
               ['mine','Your links'],['other','Other']];
 function rdKind(r){
   const k=((r.kind||'')+' '+(r.src||'')).toLowerCase();
+  if(/recording|zoom|google meet|webex|teams meeting/.test(k)) return 'videos';
+  if(/textbook/.test(k)) return 'lessons';
   if(/skill/.test(k)) return 'skills';
   if(/video/.test(k)) return 'videos';
   if(/exercise|practice/.test(k)) return 'exercises';
@@ -7635,7 +7788,9 @@ function rdKind(r){
 }
 const CUSTYPES=['IXL quiz','Schoology assignment','Schoology quiz',
   'SCORM package (interactive lesson)','SCORM quiz','Reveal assignment',
-  'Reveal quiz','Reveal ALEKS / eAssessment','YouTube video','Schoology page',
+  'Reveal quiz','Reveal ALEKS / eAssessment',
+  'Live lesson recording','Textbook PDF (lesson pages)',
+  'YouTube video','Schoology page',
   'Google Form','Google Doc / Slides','Quizizz','Kahoot','Desmos activity','Nearpod','Edpuzzle',
   'Khan Academy assignment','Worksheet / PDF','Website','Other'];
 function planCustom(){ if(!PLAN.custom) PLAN.custom=[]; return PLAN.custom; }
@@ -7719,7 +7874,8 @@ function rdCustomFormHTML(){
    +'<label>Note<input id="cusNote" placeholder="optional — due date, period, group"></label>'
    +'</div>'
    +'<p class="ev" style="margin:9px 0 0"><label style="display:inline-flex;gap:6px;align-items:center;'
-   +'font-weight:700"><input type="checkbox" id="cusAsg" checked> This is an assignment '
+   +'font-weight:700"><input type="checkbox" id="cusAsg"'+(cusIsWork(CUSTYPES[0])?' checked':'')
+   +'> This is an assignment '
    +'&mdash; show it in the week&rsquo;s assignment panel</label></p>'
    + (mine.length ? '<h6 class="cusprev">Links you have added before &mdash; tick to reuse</h6>'
       + mine.map((c,i)=>'<div class="rditem"><input type="checkbox" data-cus="'+i+'"><label>'+esc(c.title)
@@ -9278,11 +9434,20 @@ function ccSrcWord(x){
   if(/^khan/i.test(s)) return 'KHAN';
   if(/^ck-?\s*12/i.test(s)) return 'CK-12';
   if(/^ixl/i.test(s)) return 'IXL';
+  if(/recording/i.test(s)) return 'RECORDING';
+  if(/textbook/i.test(s)) return 'TEXTBOOK';
   return s.toUpperCase();
 }
 function ccTypeWord(x){
   const k=String(ccKindWord(x)||'').trim();
   return k?k.charAt(0).toUpperCase()+k.slice(1):'';
+}
+/* what a student does with it, for the checklist */
+function ccCkVerb(x){
+  const k=ccKindWord(x);
+  if(k==='video') return 'watch';
+  if(k==='skill'||k==='exercise') return 'practice';
+  return 'open';
 }
 /* the name Schoology shows: source, then type, then the content itself */
 function ccTitleOf(x){
@@ -9303,8 +9468,8 @@ function ccWeek(w, files, tree, seq){
   const kids=[], id=n=>'W'+w+'_'+n;
   const ck=[];
 
-  /* the lesson header pages come first in the checklist, in row order */
-  rows.forEach((r,ri)=>{
+  /* the page that opens a lesson */
+  function emitLesson(r,ri){
     if(!r.ref) return;
     const L=H&&H.lessons?H.lessons[r.ref]:null;
     const e=(typeof hdEdits==='function')?hdEdits(r.ref):{};
@@ -9340,10 +9505,10 @@ function ccWeek(w, files, tree, seq){
     kids.push({t:title, r:id('les'+ri), type:'webcontent', href:f,
                d:'Objective, I can statements, vocabulary and the standard for '+title+'.'});
     ck.push(['read',title,'objective, vocabulary and the standard']);
-  });
+  }
 
-  /* the assignments you marked */
-  asg.forEach((a,ai)=>{
+  /* an assignment you marked */
+  function emitAsg(a,ai){
     const links=(a.items||[]).filter(x=>x.url).map(x=>'<li><a href="'+cx(x.url)
       +'" target="_blank">'+cx((x.num?x.num+' — ':'')+x.title)+'</a></li>').join('');
     const plain=(a.items||[]).filter(x=>!x.url).map(x=>'<li>'+cx(x.title)+'</li>').join('');
@@ -9368,12 +9533,15 @@ function ccWeek(w, files, tree, seq){
                d:(a.type||'Assignment')+(a.due?' · due '+a.due:'')+' · '
                  +(a.items||[]).length+' item'+((a.items||[]).length===1?'':'s')+'.'});
     ck.push(['do',an,(a.type||'')+(a.due?' · due '+a.due:'')]);
-  });
+  }
 
-  /* everything else on the week, as its own link */
+  /* a resource that is not part of an assignment */
   let li=0;
-  rows.forEach(r=>(r.res||[]).forEach(x=>{
-    if(!x.url || inAsg.has(resKey(x))) return;
+  function emitLink(x){
+    if(!x.url){                       /* nothing to open, but it is still work for the week */
+      ck.push([ccCkVerb(x), ccTitleOf(x), x.note||'']);
+      return;
+    }
     const f=id('lnk'+li)+'/weblink.xml';
     const t=ccTitleOf(x);   /* IXL · Skill · A.1 Create dot plots */
     files.push({name:f, data:'<?xml version="1.0" encoding="UTF-8"?>\n'
@@ -9386,10 +9554,33 @@ function ccWeek(w, files, tree, seq){
       +'</webLink>'});
     kids.push({t:t, r:id('lnk'+li), type:'imswl_xmlv1p2', href:f,
                d:(x.src||'')+' · '+ccKindWord(x)+(x.note?' · '+x.note:'')});
-    ck.push([ccKindWord(x)==='video'?'watch':(ccKindWord(x)==='skill'?'practice':'open'), t,
+    ck.push([ccCkVerb(x), t,
              (x.note||'')+(x.plan?(x.note?' · ':'')+'also in the '+x.plan:'')]);
     li++;
-  }));
+  }
+
+  /* ---- the folder follows the week exactly as the Pacing tab shows it ----
+     for every lesson row: the lesson page, then that row's resources in their own order.
+     An assignment lands where its first resource sits, so a marked set of IXL skills
+     appears in the place you put it, not at the end. */
+  const owner=new Map();
+  asg.forEach((a,ai)=>(a.items||[]).forEach(x=>{
+    const k=resKey(x); if(!owner.has(k)) owner.set(k,ai); }));
+  const asgDone=new Set();
+  rows.forEach((r,ri)=>{
+    emitLesson(r,ri);
+    (r.res||[]).forEach(x=>{
+      const k=resKey(x);
+      if(inAsg.has(k)){
+        const ai=owner.has(k)?owner.get(k):-1;
+        if(ai>=0 && !asgDone.has(ai)){ asgDone.add(ai); emitAsg(asg[ai],ai); }
+        return;                       /* the other members are inside that assignment */
+      }
+      emitLink(x);
+    });
+  });
+  /* an assignment whose items are no longer on any row still belongs in the folder */
+  asg.forEach((a,ai)=>{ if(!asgDone.has(ai)){ asgDone.add(ai); emitAsg(a,ai); } });
 
   /* the checklist goes first, and lists everything above in the same order */
   const stds=ccStdsOf(w);
@@ -9746,6 +9937,18 @@ function asgAutoName(items){
   const src=[...new Set(items.map(r=>r.src||'').filter(Boolean))];
   return (src.length===1?src[0]+': ':'')+items[0].title+' + '+(items.length-1)+' more';
 }
+/* not everything you add by hand is work to be graded: a recording, the textbook pages, a page
+   you wrote — those are material. The tick box follows the Type, and you can still override it. */
+function cusIsWork(t){
+  return !/recording|textbook|youtube|video|website|page|doc \/ slides|slides/i.test(String(t||''));
+}
+var CUSONX=(typeof _on==='function')?_on:function(t,e,f,o){ t.addEventListener(e,f,o); };
+CUSONX(document,'change',function(e){
+  const t=e.target;
+  if(!t || t.id!=='cusType') return;
+  const box=document.getElementById('cusAsg');
+  if(box) box.checked=cusIsWork(t.value);
+});
 function asgAutoType(items){
   const one=items.length===1?items[0]:null;
   if(one && /quiz/i.test(one.src+' '+one.kind+' '+one.title)) return /ixl/i.test(one.src)?'IXL quiz':'Schoology quiz';
@@ -10024,6 +10227,8 @@ const RDSRCS=[['all','Everything'],['ixl','IXL'],['khan','Khan Academy'],['ck','
               ['mine','Your links'],['other','Other']];
 function rdKind(r){
   const k=((r.kind||'')+' '+(r.src||'')).toLowerCase();
+  if(/recording|zoom|google meet|webex|teams meeting/.test(k)) return 'videos';
+  if(/textbook/.test(k)) return 'lessons';
   if(/skill/.test(k)) return 'skills';
   if(/video/.test(k)) return 'videos';
   if(/exercise|practice/.test(k)) return 'exercises';
@@ -10033,7 +10238,9 @@ function rdKind(r){
 }
 const CUSTYPES=['IXL quiz','Schoology assignment','Schoology quiz',
   'SCORM package (interactive lesson)','SCORM quiz','Reveal assignment',
-  'Reveal quiz','Reveal ALEKS / eAssessment','YouTube video','Schoology page',
+  'Reveal quiz','Reveal ALEKS / eAssessment',
+  'Live lesson recording','Textbook PDF (lesson pages)',
+  'YouTube video','Schoology page',
   'Google Form','Google Doc / Slides','Quizizz','Kahoot','Desmos activity','Nearpod','Edpuzzle',
   'Khan Academy assignment','Worksheet / PDF','Website','Other'];
 function planCustom(){ if(!PLAN.custom) PLAN.custom=[]; return PLAN.custom; }
@@ -10117,7 +10324,8 @@ function rdCustomFormHTML(){
    +'<label>Note<input id="cusNote" placeholder="optional — due date, period, group"></label>'
    +'</div>'
    +'<p class="ev" style="margin:9px 0 0"><label style="display:inline-flex;gap:6px;align-items:center;'
-   +'font-weight:700"><input type="checkbox" id="cusAsg" checked> This is an assignment '
+   +'font-weight:700"><input type="checkbox" id="cusAsg"'+(cusIsWork(CUSTYPES[0])?' checked':'')
+   +'> This is an assignment '
    +'&mdash; show it in the week&rsquo;s assignment panel</label></p>'
    + (mine.length ? '<h6 class="cusprev">Links you have added before &mdash; tick to reuse</h6>'
       + mine.map((c,i)=>'<div class="rditem"><input type="checkbox" data-cus="'+i+'"><label>'+esc(c.title)
