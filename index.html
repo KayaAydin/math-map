@@ -11687,6 +11687,7 @@ function lpDownloadXlsx(){
       <button type="button" class="btn" id="nlprint">Print / PDF</button>
       <button type="button" class="btn" id="nlsave">Download .html</button>
       <button type="button" class="btn" id="nlsaveeach">.html per class</button>
+      <button type="button" class="btn primary" id="nlmailsend">Email…</button>
       <button type="button" class="btn" id="nlmaileach">Email .html per class</button>
     </div></div>
 </div>
@@ -11698,7 +11699,7 @@ function lpDownloadXlsx(){
 <div id="nlout"></div>
 </div></div></template>
 <script type="text/plain" data-js="nl">
-const NLXCSS="\n.nlsecbar{display:flex;flex-wrap:wrap;gap:4px 12px;align-items:center;font-size:12px;color:var(--ink2);\n  margin:0 0 6px}\n.nlsecbar .cap{font-weight:700;color:var(--muted);font-size:10px;letter-spacing:.07em;\n  text-transform:uppercase}\n.nlsecbar label{display:inline-flex;align-items:center;gap:5px;cursor:pointer}\n.nlsecbar button{background:var(--surface);border:1px solid var(--ring);border-radius:999px;\n  color:var(--ink2);font:inherit;font-size:11px;font-weight:700;padding:3px 10px;cursor:pointer}\n.nlsecbar button:hover{border-color:var(--accent);color:var(--accent)}\n.nlpg{display:flex;flex-wrap:wrap;gap:6px;justify-content:flex-end;margin:-4px 0 8px}\n.nlpb{background:#f4f6fa;border:1px solid #dfe4ec;border-radius:999px;color:#39404c;font:inherit;\n  font-size:10.5px;font-weight:700;padding:3px 10px;cursor:pointer}\n.nlpb:hover{border-color:var(--nlc);color:var(--nlc)}\n.nltoast{position:fixed;left:50%;bottom:26px;transform:translateX(-50%);z-index:400;\n  background:#151922;color:#fff;border-radius:999px;padding:9px 18px;font-size:12.5px;font-weight:700;\n  box-shadow:0 18px 40px -18px rgba(0,0,0,.7);opacity:0;transition:opacity .18s}\n.nltoast.on{opacity:1}\n/* --- landscape: the sheet is wider and shorter, so the whole page flows into three\n   balanced columns at the same size the portrait sheet uses --- */\nhtml[data-nlor=\"landscape\"] .nlcols,html[data-nlor=\"landscape\"] .nlcols.one{\n  display:block;column-count:3;column-gap:15px}\nhtml[data-nlor=\"landscape\"] .nlcols>div{display:contents}\nhtml[data-nlor=\"landscape\"] .nlcols .nlsec{break-inside:auto;margin:0 0 7px}\nhtml[data-nlor=\"landscape\"] .nlcols .nlsec>h3{break-after:avoid}\nhtml[data-nlor=\"landscape\"] .nlcols .nlsec>p:last-child{break-before:avoid}\nhtml[data-nlor=\"landscape\"] .nlcols .nlles,html[data-nlor=\"landscape\"] .nlcols .nlstd,\nhtml[data-nlor=\"landscape\"] .nlcols .nllink,html[data-nlor=\"landscape\"] .nlcols .nlrem,\nhtml[data-nlor=\"landscape\"] .nlcols .nlunit,html[data-nlor=\"landscape\"] .nlcols .nlwords,\nhtml[data-nlor=\"landscape\"] .nlcols .nlteach{break-inside:avoid}\nhtml[data-nlor=\"landscape\"] .nlpage .nlteach{min-height:.4in}\n.nlcols.one{grid-template-columns:1fr}\n@media print{\n  .nlpg,.nlsecbar,.nltoast{display:none!important}\n  #nlout.solo .nlpage:not(.only){display:none!important}\n  #nlout.solo .nlpage.only{break-after:auto}\n  html[data-nlor=\"landscape\"] .nlpage .nlmast h2{font-size:18pt}\n  html[data-nlor=\"landscape\"] .nlpage .nlmast .tag,\n  html[data-nlor=\"landscape\"] .nlpage .nlmast .wk{font-size:8pt}\n  html[data-nlor=\"landscape\"] .nlpage .nlmast{margin-bottom:8px}\n  html[data-nlor=\"landscape\"] .nlpage.dense .nlcols .nlsec{margin:0 0 5px}\n}\n";
+const NLXCSS="\n.nlsecbar{display:flex;flex-wrap:wrap;gap:4px 12px;align-items:center;font-size:12px;color:var(--ink2);\n  margin:0 0 6px}\n.nlsecbar .cap{font-weight:700;color:var(--muted);font-size:10px;letter-spacing:.07em;\n  text-transform:uppercase}\n.nlsecbar label{display:inline-flex;align-items:center;gap:5px;cursor:pointer}\n.nlsecbar button{background:var(--surface);border:1px solid var(--ring);border-radius:999px;\n  color:var(--ink2);font:inherit;font-size:11px;font-weight:700;padding:3px 10px;cursor:pointer}\n.nlsecbar button:hover{border-color:var(--accent);color:var(--accent)}\n.nlpg{display:flex;flex-wrap:wrap;gap:6px;justify-content:flex-end;margin:-4px 0 8px}\n.nlpb{background:#f4f6fa;border:1px solid #dfe4ec;border-radius:999px;color:#39404c;font:inherit;\n  font-size:10.5px;font-weight:700;padding:3px 10px;cursor:pointer}\n.nlpb:hover{border-color:var(--nlc);color:var(--nlc)}\n.nltoast{position:fixed;left:50%;bottom:26px;transform:translateX(-50%);z-index:400;\n  background:#151922;color:#fff;border-radius:999px;padding:9px 18px;font-size:12.5px;font-weight:700;\n  box-shadow:0 18px 40px -18px rgba(0,0,0,.7);opacity:0;transition:opacity .18s}\n.nltoast.on{opacity:1}\n/* --- landscape: the sheet is wider and shorter, so the whole page flows into three\n   balanced columns at the same size the portrait sheet uses --- */\nhtml[data-nlor=\"landscape\"] .nlcols,html[data-nlor=\"landscape\"] .nlcols.one{\n  display:block;column-count:3;column-gap:15px}\nhtml[data-nlor=\"landscape\"] .nlcols>div{display:contents}\nhtml[data-nlor=\"landscape\"] .nlcols .nlsec{break-inside:auto;margin:0 0 7px}\nhtml[data-nlor=\"landscape\"] .nlcols .nlsec>h3{break-after:avoid}\nhtml[data-nlor=\"landscape\"] .nlcols .nlsec>p:last-child{break-before:avoid}\nhtml[data-nlor=\"landscape\"] .nlcols .nlles,html[data-nlor=\"landscape\"] .nlcols .nlstd,\nhtml[data-nlor=\"landscape\"] .nlcols .nllink,html[data-nlor=\"landscape\"] .nlcols .nlrem,\nhtml[data-nlor=\"landscape\"] .nlcols .nlunit,html[data-nlor=\"landscape\"] .nlcols .nlwords,\nhtml[data-nlor=\"landscape\"] .nlcols .nlteach{break-inside:avoid}\nhtml[data-nlor=\"landscape\"] .nlpage .nlteach{min-height:.4in}\n.nlcols.one{grid-template-columns:1fr}\n@media print{\n  .nlpg,.nlsecbar,.nltoast{display:none!important}\n  #nlout.solo .nlpage:not(.only){display:none!important}\n  #nlout.solo .nlpage.only{break-after:auto}\n  html[data-nlor=\"landscape\"] .nlpage .nlmast h2{font-size:18pt}\n  html[data-nlor=\"landscape\"] .nlpage .nlmast .tag,\n  html[data-nlor=\"landscape\"] .nlpage .nlmast .wk{font-size:8pt}\n  html[data-nlor=\"landscape\"] .nlpage .nlmast{margin-bottom:8px}\n  html[data-nlor=\"landscape\"] .nlpage.dense .nlcols .nlsec{margin:0 0 5px}\n}\n"+"\n.mldlg{position:fixed;inset:0;z-index:420;background:rgba(10,13,18,.55);display:flex;\n  align-items:center;justify-content:center;padding:18px}\n.mlbox{background:var(--plane);border:1px solid var(--ring);border-radius:14px;padding:20px 22px;\n  width:min(620px,100%);max-height:92vh;overflow:auto;\n  box-shadow:0 30px 70px -30px rgba(0,0,0,.8)}\n.mlbox h3{margin:0 0 4px;font-size:17px}\n.mlbox .sb{font-size:12.5px;color:var(--muted);margin:0 0 14px}\n.mlbox fieldset{border:1px solid var(--grid);border-radius:10px;margin:0 0 12px;padding:10px 12px}\n.mlbox legend{font-size:10px;font-weight:800;letter-spacing:.07em;text-transform:uppercase;\n  color:var(--muted);padding:0 5px}\n.mlbox label{font-size:13px;color:var(--ink2)}\n.mlbox .row{display:flex;flex-wrap:wrap;gap:10px 16px;align-items:center}\n.mlbox input[type=text],.mlbox input[type=url],.mlbox input[type=password]{\n  background:var(--surface);color:var(--ink);border:1px solid var(--ring);border-radius:8px;\n  padding:7px 9px;font:inherit;font-size:12.5px;width:100%}\n.mlbox .f{display:flex;flex-direction:column;gap:4px;flex:1 1 240px;margin:0 0 8px}\n.mlbox .f span{font-size:10px;font-weight:800;letter-spacing:.07em;text-transform:uppercase;\n  color:var(--muted)}\n.mlbox .acts{display:flex;flex-wrap:wrap;gap:8px;margin:14px 0 0}\n.mllog{font-size:12.5px;line-height:1.5;color:var(--ink2);background:var(--surface);\n  border:1px solid var(--grid);border-radius:10px;padding:9px 11px;margin:12px 0 0;\n  max-height:190px;overflow:auto;white-space:pre-wrap}\n.mllog b{color:var(--ink)}\n.mlwarn{color:#a3441c;font-weight:700}\n.mlpeople{border:1px solid var(--grid);border-radius:10px;max-height:230px;overflow:auto;\n  margin:8px 0 0;background:var(--surface)}\n.mlgrp{font-size:10px;font-weight:800;letter-spacing:.07em;text-transform:uppercase;\n  color:var(--muted);padding:8px 11px 4px;position:sticky;top:0;background:var(--surface)}\n.mlp{display:flex;gap:8px;align-items:baseline;padding:4px 11px;font-size:12.5px;color:var(--ink2)}\n.mlp:hover{background:var(--plane)}\n.mlp input{margin:0;flex:none}\n.mlp b{color:var(--ink);font-weight:700}\n.mlp .ad{color:var(--muted);font-size:11.5px;word-break:break-all}\n.mlp.off b,.mlp.off .ad{text-decoration:line-through;opacity:.55}\n.mlcount{font-size:12px;color:var(--ink2);margin:8px 0 0}\n.mlok{color:#0f766e;font-weight:700}\n@media print{.mldlg{display:none!important}}\n";
 const NKEYS=['6','7','8','a1'];
 const NSRC=[['mine','My pacing — I enter it'],['trimmed','Recommended — Arkansas-required only'],
             ['district','District — Arkansas Online School'],['asWritten','As the Teacher Edition paces it']];
@@ -12052,6 +12053,319 @@ function nlSaveEmail(c){
     {type:'text/html'}), nlFileBase(c)+'_email.html');
   nlToast('email version saved — paste the body into a mail-merge script');
 }
+
+/* ================= send the newsletter from your own Gmail ================= */
+const MLKEY={url:'armath.mail.url',code:'armath.mail.code',to:'armath.mail.to',
+             cc:'armath.mail.cc',subj:'armath.mail.subj',test:'armath.mail.test',
+             greet:'armath.mail.greet'};
+function mlGet(k,d){ try{ return localStorage.getItem(MLKEY[k])||d||''; }catch(e){ return d||''; } }
+function mlSet(k,v){ try{ localStorage.setItem(MLKEY[k],v); }catch(e){} }
+function mlReady(){ return !!(mlGet('url') && mlGet('code')); }
+function mlWeek(){ return document.getElementById('nlweek').value; }
+function mlClasses(){
+  return [...document.querySelectorAll('#nlout .nlpage[data-nlc]')].map(el=>el.dataset.nlc);
+}
+function mlSay(html,cls){
+  const box=document.getElementById('mllog');
+  if(!box) return;
+  box.innerHTML += (box.innerHTML?'\n':'')+(cls?'<span class="'+cls+'">'+html+'</span>':html);
+  box.scrollTop=box.scrollHeight;
+}
+function mlPost(body){
+  return fetch(mlGet('url'),{method:'POST',redirect:'follow',
+      headers:{'Content-Type':'text/plain;charset=utf-8'},
+      body:JSON.stringify(Object.assign({code:mlGet('code')},body))})
+    .then(r=>r.json());
+}
+function mlRoster(){
+  return fetch(mlGet('url')+'?code='+encodeURIComponent(mlGet('code'))+'&action=roster&t='+Date.now(),
+      {redirect:'follow'}).then(r=>r.json());
+}
+function mlCcList(){
+  return (document.getElementById('mlcc').value||'').split(/[,;\s]+/)
+    .map(x=>x.trim()).filter(x=>/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(x));
+}
+function mlPicked(){
+  return [...document.querySelectorAll('[data-mlc]')].filter(b=>b.checked).map(b=>b.dataset.mlc);
+}
+function mlAudience(){
+  const b=document.querySelector('[name="mlto"]:checked');
+  return b?b.value:'parents';
+}
+function mlSubjectFor(c){
+  const s=document.getElementById('mlsubj').value||'{{class}} — Week {{week}} newsletter';
+  return s.replace(/\{\{\s*class\s*\}\}/gi,LPBANK[c].tab).replace(/\{\{\s*week\s*\}\}/gi,mlWeek());
+}
+function mlSaveFields(){
+  mlSet('to',mlAudience());
+  mlSet('cc',document.getElementById('mlcc').value||'');
+  mlSet('subj',document.getElementById('mlsubj').value||'');
+  mlSet('test',document.getElementById('mltest').value||'');
+  const g=document.getElementById('mlgreet');
+  mlSet('greet',(g&&g.checked)?'1':'0');
+}
+/* addresses you unticked stay unticked next week, until you press Reset */
+function mlSkip(){
+  try{ return JSON.parse(localStorage.getItem('armath.mail.skip')||'{}')||{}; }catch(e){ return {}; }
+}
+function mlSkipSet(o){ try{ localStorage.setItem('armath.mail.skip',JSON.stringify(o)); }catch(e){} }
+function mlSkipMark(addr,off){
+  const o=mlSkip();
+  if(off) o[addr]=1; else delete o[addr];
+  mlSkipSet(o);
+}
+let MLPEOPLE={};                       /* class -> [{to,kind,names}] as the service returned it */
+function mlListFetch(c,to){
+  return fetch(mlGet('url')+'?code='+encodeURIComponent(mlGet('code'))+'&action=list&cls='
+      +encodeURIComponent(c)+'&to='+encodeURIComponent(to)+'&t='+Date.now(),{redirect:'follow'})
+    .then(r=>r.json());
+}
+function mlPeopleHTML(){
+  const skip=mlSkip();
+  let html='', n=0, off=0;
+  Object.keys(MLPEOPLE).forEach(c=>{
+    const rows=MLPEOPLE[c]||[];
+    html+='<div class="mlgrp">'+nesc(LPBANK[c].tab)+' &middot; '+rows.length+' letters</div>';
+    rows.forEach(x=>{
+      const dead=!!skip[x.to];
+      if(dead) off++; else n++;
+      html+='<label class="mlp'+(dead?' off':'')+'"><input type="checkbox" data-mlp="'+nesc(x.to)
+        +'"'+(dead?'':' checked')+'>'
+        +'<span><b>'+nesc(x.names||x.to)+'</b> '
+        +'<span class="ad">'+nesc(x.to)+(x.kind==='student'?' · student':' · parent')+'</span></span>'
+        +'</label>';
+    });
+  });
+  return {html:html, on:n, off:off};
+}
+function mlCounts(){
+  const skip=mlSkip(); let on=0, off=0;
+  Object.keys(MLPEOPLE).forEach(c=>(MLPEOPLE[c]||[]).forEach(x=>{ skip[x.to]?off++:on++; }));
+  return {on:on, off:off};
+}
+function mlCountPaint(){
+  const cnt=document.getElementById('mlcount');
+  if(!cnt) return;
+  if(!Object.keys(MLPEOPLE).length){ cnt.textContent=''; return; }
+  const r=mlCounts();
+  cnt.innerHTML='<b>'+r.on+'</b> will receive it'
+    +(r.off?' &middot; '+r.off+' unticked (they stay unticked next week — '
+      +'<a href="#" id="mlreset">reset</a>)':'');
+}
+function mlPeoplePaint(){
+  const box=document.getElementById('mlpeople'), cnt=document.getElementById('mlcount');
+  if(!box) return;
+  if(!Object.keys(MLPEOPLE).length){
+    box.innerHTML=''; box.hidden=true;
+    if(cnt) cnt.textContent='';
+    return;
+  }
+  box.hidden=false; box.innerHTML=mlPeopleHTML().html;
+  mlCountPaint();
+}
+function mlLoadPeople(cs,to,say){
+  MLPEOPLE={};
+  let i=0;
+  const step=()=>{
+    if(i>=cs.length){ mlPeoplePaint(); if(say) say(); return; }
+    const c=cs[i++];
+    mlListFetch(c,to).then(j=>{
+      if(!j||!j.ok) mlSay(LPBANK[c].tab+': '+((j&&j.error)||'the list could not be read'),'mlwarn');
+      else MLPEOPLE[c]=j.people||[];
+      step();
+    }).catch(e=>{ mlSay('Could not reach the service ('+e.message+').','mlwarn'); step(); });
+  };
+  step();
+}
+function mlChosen(c){
+  const skip=mlSkip();
+  return (MLPEOPLE[c]||[]).map(x=>x.to).filter(a=>!skip[a]);
+}
+function mlDialog(only){
+  const cs=mlClasses();
+  if(!cs.length) return nlToast('build the newsletters first, then email them');
+  const mask=document.createElement('div'); mask.className='mldlg';
+  const setup=!mlReady();
+  mask.innerHTML='<div class="mlbox"><h3>Email the newsletter</h3>'
+    +'<p class="sb">Sent from your school Gmail, to whoever is on the class tab of your roster '
+    +'spreadsheet right now.</p>'
+    +'<fieldset id="mlsetup"'+(setup?'':' hidden')+'><legend>One-time setup</legend>'
+      +'<div class="f"><span>Web app URL (ends in /exec)</span>'
+      +'<input type="url" id="mlurl" value="'+nesc(mlGet('url'))+'" placeholder="https://script.google.com/…/exec"></div>'
+      +'<div class="f"><span>Your code</span><input type="text" id="mlcode" value="'
+      +nesc(mlGet('code'))+'" placeholder="the phrase you set in the script"></div>'
+      +'<div class="acts"><button type="button" class="btn primary" id="mlsave">Save and check</button>'
+      +'<button type="button" class="btn" id="mlhelp">What is this?</button></div></fieldset>'
+    +'<fieldset><legend>Classes</legend><div class="row">'
+      + cs.map(c=>'<label><input type="checkbox" data-mlc="'+c+'"'
+          +((!only||only===c)?' checked':'')+'> '+nesc(LPBANK[c].tab)+'</label>').join('')
+      +'</div></fieldset>'
+    +'<fieldset><legend>Who receives it</legend><div class="row">'
+      +['parents','students','both'].map(v=>'<label><input type="radio" name="mlto" value="'+v+'"'
+          +((mlGet('to','parents')===v)?' checked':'')+'> '
+          +(v==='parents'?'Parents and guardians':(v==='students'?'Students':'Both'))
+          +'</label>').join('')
+      +'</div>'
+      +'<div class="f" style="margin-top:10px"><span>Copy to — one copy each, not one per family</span>'
+      +'<input type="text" id="mlcc" value="'+nesc(mlGet('cc'))+'" placeholder="principal@… , coach@…"></div>'
+      +'<div class="f"><span>Subject &mdash; {{class}} and {{week}} are filled in</span>'
+      +'<input type="text" id="mlsubj" value="'
+      +nesc(mlGet('subj','{{class}} — Week {{week}} newsletter'))+'"></div>'
+      +'<label><input type="checkbox" id="mlgreet"'+(mlGet('greet','1')==='0'?'':' checked')
+      +'> Open each letter with a greeting by name</label>'
+      +'</fieldset>'
+    +'<fieldset><legend>Who exactly &mdash; untick anyone you are not writing to</legend>'
+      +'<div class="acts" style="margin:0">'
+      +'<button type="button" class="btn" id="mlwho">Load the list</button>'
+      +'<button type="button" class="btn" id="mlall">Tick all</button>'
+      +'<button type="button" class="btn" id="mlnone">Untick all</button></div>'
+      +'<p class="mlcount" id="mlcount"></p>'
+      +'<div class="mlpeople" id="mlpeople" hidden></div></fieldset>'
+    +'<fieldset><legend>Before you send</legend>'
+      +'<div class="f"><span>Send a test to</span><input type="text" id="mltest" value="'
+      +nesc(mlGet('test'))+'" placeholder="your own address"></div>'
+      +'<div class="acts">'
+      +'<button type="button" class="btn" id="mlcheck">Check roster</button>'
+      +'<button type="button" class="btn" id="mltestbtn">Send a test</button>'
+      +'<button type="button" class="btn primary" id="mlsend">Send now</button>'
+      +'<button type="button" class="btn" id="mlclose">Close</button></div></fieldset>'
+    +'<div class="mllog" id="mllog">'+(setup
+        ? 'Paste the web app URL and your code above. The setup page that came with the app walks '
+          +'through making them — it takes about five minutes, once.'
+        : 'Ready. <b>Check roster</b> counts who would receive it, <b>Send a test</b> mails one copy '
+          +'to you.')+'</div></div>';
+  document.body.appendChild(mask);
+  const q=id=>mask.querySelector('#'+id);
+  const close=()=>{ mlSaveFields(); mask.remove(); };
+  mask.addEventListener('click',e=>{ if(e.target===mask) close(); });
+  q('mlclose').addEventListener('click',close);
+  q('mlhelp').addEventListener('click',()=>{
+    mlSay('The page itself cannot send mail. A small script in <b>your</b> Google account does it, '
+      +'so the letters come from your school address and Google counts them as yours. Open your '
+      +'roster spreadsheet → Extensions → Apps Script, paste the file that came with this app, '
+      +'set a code, deploy it as a web app, then paste the /exec URL and that code here.');
+  });
+  q('mlsave').addEventListener('click',()=>{
+    mlSet('url',(q('mlurl').value||'').trim());
+    mlSet('code',(q('mlcode').value||'').trim());
+    if(!mlReady()) return mlSay('Both the URL and the code are needed.','mlwarn');
+    mlSay('checking…');
+    fetch(mlGet('url')+'?code='+encodeURIComponent(mlGet('code'))+'&action=ping&t='+Date.now(),
+        {redirect:'follow'}).then(r=>r.json()).then(j=>{
+      if(!j||!j.ok) return mlSay('The service answered: '+((j&&j.error)||'no')+'.','mlwarn');
+      mlSay('Connected as <b>'+nesc(j.who||'your account')+'</b> — Gmail will take '
+        +(j.quota||0)+' more messages today.','mlok');
+      q('mlsetup').hidden=true;
+    }).catch(e=>mlSay('Could not reach the service — check the URL. ('+e.message+')','mlwarn'));
+  });
+  q('mlcheck').addEventListener('click',()=>{
+    if(!mlReady()) return mlSay('Set the URL and code first.','mlwarn');
+    mlSay('reading the roster…');
+    mlRoster().then(j=>{
+      if(!j||!j.ok) return mlSay('The service answered: '+((j&&j.error)||'no')+'.','mlwarn');
+      const to=mlAudience();
+      mlPicked().forEach(c=>{
+        const r=(j.classes||{})[c];
+        if(!r) return mlSay(LPBANK[c].tab+': that class has no tab set in the script.','mlwarn');
+        if(r.error) return mlSay(LPBANK[c].tab+': '+nesc(r.error),'mlwarn');
+        const n=(to==='parents')?r.parentEmails:(to==='students'?r.studentEmails
+                :(r.parentEmails+r.studentEmails));
+        mlSay('<b>'+nesc(LPBANK[c].tab)+'</b> — '+r.students+' students on the tab · '
+          +r.parentEmails+' parent addresses · '+r.studentEmails+' student addresses → '
+          +'<b>'+n+'</b> letters'
+          +(r.missing&&r.missing.length?' · no address for: '+nesc(r.missing.join(', ')):''));
+      });
+      mlSay('Gmail will take '+(j.quota||0)+' more messages today.');
+    }).catch(e=>mlSay('Could not reach the service ('+e.message+').','mlwarn'));
+  });
+  const reload=()=>{
+    const cs=mlPicked();
+    if(!cs.length) return mlSay('Tick a class first.','mlwarn');
+    mlSaveFields();
+    mlSay('reading who is on '+(cs.length===1?'that tab':'those tabs')+'…');
+    mlLoadPeople(cs,mlAudience(),()=>{
+      const r=mlCounts();
+      mlSay('The list below is the roster as it stands right now — '+r.on+' letter'
+        +(r.on===1?'':'s')+'.');
+    });
+  };
+  q('mlwho').addEventListener('click',reload);
+  /* the list is about a class and an audience, so it has to be re-read when either changes */
+  mask.querySelectorAll('[data-mlc],[name="mlto"]').forEach(el=>{
+    el.addEventListener('change',()=>{ MLPEOPLE={}; mlPeoplePaint(); });
+  });
+  q('mlpeople').addEventListener('change',e=>{
+    const t=e.target;
+    if(!t || !t.dataset || !t.dataset.mlp) return;
+    mlSkipMark(t.dataset.mlp,!t.checked);
+    /* only the row and the tally change — redrawing the list would move it under your hand */
+    const row=t.closest('.mlp'); if(row) row.classList.toggle('off',!t.checked);
+    mlCountPaint();
+  });
+  q('mlall').addEventListener('click',()=>{
+    if(!Object.keys(MLPEOPLE).length) return reload();
+    const o=mlSkip();
+    Object.keys(MLPEOPLE).forEach(c=>(MLPEOPLE[c]||[]).forEach(x=>{ delete o[x.to]; }));
+    mlSkipSet(o); mlPeoplePaint();
+  });
+  q('mlnone').addEventListener('click',()=>{
+    if(!Object.keys(MLPEOPLE).length) return reload();
+    const o=mlSkip();
+    Object.keys(MLPEOPLE).forEach(c=>(MLPEOPLE[c]||[]).forEach(x=>{ o[x.to]=1; }));
+    mlSkipSet(o); mlPeoplePaint();
+  });
+  q('mlcount').addEventListener('click',e=>{
+    if(e.target && e.target.id==='mlreset'){ e.preventDefault(); mlSkipSet({}); mlPeoplePaint(); }
+  });
+  q('mltestbtn').addEventListener('click',()=>{
+    if(!mlReady()) return mlSay('Set the URL and code first.','mlwarn');
+    const cs=mlPicked(); if(!cs.length) return mlSay('Tick a class first.','mlwarn');
+    mlSaveFields();
+    const c=cs[0];
+    mlSay('sending a test copy of '+nesc(LPBANK[c].tab)+'…');
+    mlPost({action:'test',cls:c,className:LPBANK[c].tab,week:mlWeek(),
+            subject:mlSubjectFor(c),to:mlAudience(),html:nlEmailHTML(c),
+            testTo:(q('mltest').value||'').trim()}).then(j=>{
+      if(!j||!j.ok) return mlSay('Not sent: '+((j&&j.error)||'refused'),'mlwarn');
+      mlSay('Test sent to '+nesc(j.test||'you')+' — open it before sending for real.','mlok');
+    }).catch(e=>mlSay('Could not reach the service ('+e.message+').','mlwarn'));
+  });
+  q('mlsend').addEventListener('click',()=>{
+    if(!mlReady()) return mlSay('Set the URL and code first.','mlwarn');
+    const cs=mlPicked(); if(!cs.length) return mlSay('Tick a class first.','mlwarn');
+    mlSaveFields();
+    const to=mlAudience(), cc=mlCcList();
+    const picked=Object.keys(MLPEOPLE).length;
+    const words=to==='parents'?'parents and guardians':(to==='students'?'students':'parents and students');
+    const howMany=picked?(cs.reduce((n,c)=>n+mlChosen(c).length,0)+' chosen recipients')
+                        :('every '+words.replace(/s$/,'')+' on the tab');
+    if(!confirm('Send the Week '+mlWeek()+' newsletter to '+howMany+' in '
+        +cs.map(c=>LPBANK[c].tab).join(', ')+(cc.length?', and '+cc.length+' copy':'')
+        +'?'+(picked?'':'\n\nThe roster is read as it stands right now.'))) return;
+    let i=0;
+    const next=()=>{
+      if(i>=cs.length){ mlSay('Done.','mlok'); return; }
+      const c=cs[i++];
+      mlSay('sending '+nesc(LPBANK[c].tab)+'…');
+      const only=Object.keys(MLPEOPLE).length?mlChosen(c):null;
+      if(only && !only.length){ mlSay(LPBANK[c].tab+' — everyone is unticked, skipped.','mlwarn');
+        return next(); }
+      mlPost({action:'send',cls:c,className:LPBANK[c].tab,week:mlWeek(),
+              subject:mlSubjectFor(c),to:to,cc:cc,html:nlEmailHTML(c),only:only,
+              greeting:mlGet('greet','1')!=='0'}).then(j=>{
+        if(!j||!j.ok) mlSay(LPBANK[c].tab+' — not sent: '+((j&&j.error)||'refused'),'mlwarn');
+        else{
+          mlSay('<b>'+nesc(LPBANK[c].tab)+'</b> — '+j.sent+' sent ('+j.people+' families and students'
+            +(j.cc?', '+j.cc+' copy':'')+'). Gmail will take '+(j.quota||0)+' more today.','mlok');
+          if(j.failed&&j.failed.length) mlSay('could not deliver: '+nesc(j.failed.join(' · ')),'mlwarn');
+        }
+        next();
+      }).catch(e=>{ mlSay(LPBANK[c].tab+' — the service could not be reached ('+e.message+').','mlwarn');
+        next(); });
+    };
+    next();
+  });
+}
 /* ================= a Schoology web package: a zip whose index.html is the page ================= */
 function nlCrc(u8){
   let t=nlCrc.t;
@@ -12320,6 +12634,7 @@ function nlBuild(){
         +'<button type="button" class="nlpb" data-nlpng="'+c+'">Save PNG</button>'
         +'<button type="button" class="nlpb" data-nlmail="'+c+'">Copy for email</button>'
         +'<button type="button" class="nlpb" data-nlzip="'+c+'">Schoology .zip</button>'
+        +'<button type="button" class="nlpb" data-mlsend="'+c+'">Email class</button>'
       +'</div>'
       +'<div class="nlmast"><div><p class="school">Arkansas Online School &middot; Mathematics</p>'
       +'<h2>'+nesc(B.tab)+'</h2><p class="tag">'+nesc(B.book)+' &middot; Week '+week+' newsletter for '
@@ -12381,6 +12696,7 @@ function nlDownload(){
   _on(document.getElementById('nlprint'),'click',()=>nlPrintNow(null));
   _on(document.getElementById('nlsave'),'click',nlDownload);
   _on(document.getElementById('nlsaveeach'),'click',nlDownloadEach);
+  _on(document.getElementById('nlmailsend'),'click',()=>mlDialog(null));
   _on(document.getElementById('nlmaileach'),'click',()=>{
     const els=[...document.querySelectorAll('#nlout .nlpage[data-nlc]')];
     if(!els.length) return nlToast('nothing to save yet');
@@ -12427,6 +12743,7 @@ function nlDownload(){
     if(d.nlpng) return nlSavePNG(d.nlpng);
     if(d.nlmail) return nlCopyEmail(d.nlmail);
     if(d.nlzip) return nlSchoologyZip(d.nlzip);
+    if(d.mlsend) return mlDialog(d.mlsend);
   });
   const t=document.getElementById('theme');
   if(t) _on(t,'click',()=>{ const dark=document.documentElement.getAttribute('data-theme')==='dark';
