@@ -11793,7 +11793,8 @@ function nlBodyFont(){
   const b=getComputedStyle(document.body);
   return {fam:NLFONT, size:b.fontSize||'15px', lh:'1.5'};
 }
-function nlCssDoc(){
+const NLMAILCSS="\n/* ===== the email skin ================================================================\n   The printed sheet is tuned for paper: 8pt type, two columns, hairline rules. An email\n   is read on a phone at arm's length, so the very same markup is restyled for a screen —\n   bigger type, one column, cards with room to breathe, links you can hit with a thumb. */\n.nlpage{border:0;border-radius:16px;box-shadow:none;padding:0;background:#fff;overflow:hidden}\n.nlpage .nlmast{display:block;background:var(--nlc);border:0;padding:28px 28px 24px;margin:0}\n.nlpage .nlmast .school{color:rgba(255,255,255,.78);font-size:11.5px;letter-spacing:.2em;\n  font-weight:800}\n.nlpage .nlmast h2{color:#fff;font-size:31px;line-height:1.08;margin:9px 0 0;letter-spacing:-.02em;\n  text-transform:none;font-weight:800}\n.nlpage .nlmast .tag{color:rgba(255,255,255,.92);font-size:15px;margin:9px 0 0;line-height:1.45}\n.nlpage .nlmast .wk{display:inline-block;text-align:left;color:#fff;font-size:14px;font-weight:700;\n  margin:16px 0 0;background:rgba(255,255,255,.18);border-radius:999px;padding:9px 16px;\n  line-height:1.3}\n.nlpage .nlmast .wk b{display:inline;color:#fff;font-size:14px}\n.nlpage .nlcols{padding:26px 28px 8px}\n.nlpage .nlsec{margin:0 0 28px}\n.nlpage .nlsec>h3{font-size:12.5px;letter-spacing:.16em;font-weight:800;color:var(--nlc);\n  border-bottom:2px solid #eef2f7;padding:0 0 9px;margin:0 0 14px}\n.nlpage .nlsec p{font-size:16px;line-height:1.62;color:#2b3440;margin:0 0 11px}\n.nlpage .nlsec ul{font-size:16px;line-height:1.62;color:#2b3440;padding-left:21px}\n.nlpage .nlsec li{margin-bottom:9px}\n.nlpage .nlunit{background:#f5f8fc;border-left:4px solid var(--nlc);border-radius:0 12px 12px 0;\n  padding:17px 19px}\n.nlpage .nlunit .ut{font-size:18.5px;margin:0 0 9px;line-height:1.3}\n.nlpage .nlunit .eq{font-size:14.5px;margin:11px 0 0;line-height:1.55}\n.nlpage .nlles{border:1px solid #e6ebf3;border-radius:14px;padding:17px 19px;margin:0 0 13px;\n  background:#fdfefe}\n.nlpage .nlles .lt{font-size:17.5px;line-height:1.3;margin:0 0 9px}\n.nlpage .nlles .bl{font-size:15.5px;line-height:1.6;margin:0 0 9px;color:#333c48}\n.nlpage .nlles .tk{font-size:15px;line-height:1.55;padding-left:17px;color:#46505d}\n.nlpage .nlstd{background:#f6f9fc;border-radius:11px;padding:13px 15px;font-size:15.5px;\n  line-height:1.55;margin:0 0 10px;color:#2b3440}\n.nlpage .nlstd .c{font-size:15.5px}\n.nlpage .nllink{display:block;border:1px solid #e1e7f0;border-radius:13px;padding:14px 17px;\n  margin:0 0 10px;background:#fff;font-size:16px;line-height:1.4}\n.nlpage .nllink .kd{display:inline-block;font-size:10.5px;padding:4px 9px;border-radius:6px;\n  background:#eef3fa;color:#3d4c63;letter-spacing:.09em;margin:0 0 7px;vertical-align:baseline}\n.nlpage .nllink .lb{display:block;font-size:16px;font-weight:700;color:#154bb5}\n.nlpage .nllink .xd{display:block;font-size:14px;color:#6b7480;font-weight:600;margin:3px 0 0}\n.nlpage .nlwords{gap:9px}\n.nlpage .nlword{font-size:14.5px;padding:8px 14px;border-radius:999px;border:1px solid #dce3ed;\n  background:#fff;font-weight:700}\n.nlpage .nlword.ac{background:#f5f7fa;color:#5b6472;font-weight:600}\n.nlpage .nlask li{font-size:16px;margin-bottom:11px;line-height:1.6}\n.nlpage .nlrem{background:#fff8ec;border:1px solid #f2e3c8;border-radius:13px;padding:17px 19px;\n  font-size:15.5px;line-height:1.62;color:#3d3628}\n.nlpage .nlcal{font-size:15.5px;line-height:1.62;color:#3f4754}\n.nlpage .nlteach{border:0;border-left:4px solid var(--nlc);border-radius:0 12px 12px 0;\n  background:#f5f8fc;padding:17px 19px;font-size:16px;line-height:1.62;min-height:0;color:#2b3440}\n.nlpage .nlempty{font-size:13.5px;color:#78818d;margin:10px 0 0;line-height:1.5}\n.nlpage .nlfoot{display:block;border-top:1px solid #eef1f6;padding:18px 28px 22px;margin:8px 0 0;\n  font-size:13px;color:#78818d;line-height:1.6}\n.nlpage .nlfoot span{display:block}\n\n.nlpage .nlbody{padding:26px 28px 6px}\n.nlpage .nlmast .wk b{margin-right:9px}\n.nlpage .nllink,.nlpage .nllink .lb,.nlpage .nllink .kd,.nlpage .nllink .xd{text-decoration:none}\n.nlpage .nlstd .k{margin-right:7px}\n.nlpage .nlles .lt .st{margin-right:7px}\n.nlpage .nlles .lt .rf{margin-right:5px}\n";
+function nlCssDoc(mail){
   const f=nlBodyFont();
   return '*,*::before,*::after{box-sizing:border-box}\n'
     /* the handful of app-wide rules the newsletter inherits, or the copy sets its own type */
@@ -11808,7 +11809,8 @@ function nlCssDoc(){
     +'.nlwrap{padding:18px;max-width:1180px;margin:0 auto;font-family:'+f.fam
     +';font-size:'+f.size+';line-height:'+f.lh+';color:#151922}.nlteach{white-space:pre-wrap}'
     +'.nlteach:empty{display:none}.nlteach:empty:before{content:""}'
-    +'\n@page{size:letter '+nlOr()+';margin:'+(nlOr()==='landscape'?'.36in':'.42in')+'}';
+    +'\n@page{size:letter '+nlOr()+';margin:'+(nlOr()==='landscape'?'.36in':'.42in')+'}'
+    + (mail?'\n'+NLMAILCSS:'');
 }
 function nlDocHTML(inner,title){
   return '<!doctype html><html lang="en" data-nlor="'+nlOr()+'"><head><meta charset="utf-8">'
@@ -11952,9 +11954,9 @@ const NLIN=['font-family','font-size','font-weight','font-style','line-height','
   'border-bottom-left-radius','text-decoration-line','vertical-align','list-style-type'];
 function nlEmailHTML(c,opt){
   opt=opt||{};
-  const WID=opt.w||640, FS=opt.fs||1;
+  const WID=opt.w||600, FS=opt.fs||1;
   const el=nlPageEl(c); if(!el) return '';
-  const css=nlCssDoc()+'\n.nlteach:empty{display:block!important}'
+  const css=nlCssDoc(true)+'\n.nlteach:empty{display:block!important}'
     +'\n.nlteach:empty:before{content:""!important}';
   const f=document.createElement('iframe');
   f.setAttribute('aria-hidden','true');
@@ -11978,6 +11980,16 @@ function nlEmailHTML(c,opt){
       [...g.children].forEach(col=>{ while(col.firstChild) g.parentNode.insertBefore(col.firstChild,g); });
       g.remove();
     });
+    /* the masthead runs edge to edge, so everything between it and the footer gets its own
+       padded box — otherwise the headings sit flush against the side of the card */
+    const foot=pg.querySelector('.nlfoot');
+    const bodybox=d.createElement('div');
+    bodybox.className='nlbody';
+    [...pg.children].forEach(n=>{
+      if(n.classList.contains('nlmast')||n.classList.contains('nlfoot')) return;
+      bodybox.appendChild(n);
+    });
+    if(foot) pg.insertBefore(bodybox,foot); else pg.appendChild(bodybox);
     /* the flex rows stack */
     pg.querySelectorAll('.nlmast,.nlfoot,.nlwords').forEach(x=>{ x.style.display='block'; });
     pg.querySelectorAll('.nlmast>div,.nlfoot>span').forEach(x=>{
@@ -12001,7 +12013,7 @@ function nlEmailHTML(c,opt){
         if(/^border-.*-(style)$/.test(k) && v==='none') return;
         if(/radius$/.test(k) && v==='0px') return;
         if(k==='background-color' && (v==='rgba(0, 0, 0, 0)'||v==='transparent')) return;
-        if(k==='text-decoration-line' && v==='none') return;
+        if(k==='text-decoration-line' && v==='none' && n.tagName!=='A') return;
         if(k==='text-transform' && v==='none') return;
         if(k==='letter-spacing' && v==='normal') return;
         if(k==='white-space' && v==='normal') return;
@@ -12010,9 +12022,12 @@ function nlEmailHTML(c,opt){
           { s+=k+':'+(Math.round(parseFloat(v)*FS*10)/10)+'px;'; return; }
         s+=k+':'+v+';';
       });
+      /* a link keeps whatever the design says, written out in full: leave it off and every
+         mail client puts its own underline back */
+      if(n.tagName==='A') s+='text-decoration:'+(cs.textDecorationLine||'none')+';';
       const dis=cs.display;
       if(dis==='inline-block'||dis==='list-item'||dis==='block'||dis==='inline') s+='display:'+dis+';';
-      if(n===pg) s+='width:'+WID+'px;max-width:100%;';
+      if(n===pg) s+='width:100%;max-width:'+WID+'px;';
       return s;
     });
     nodes.forEach((n,i)=>{
@@ -12023,8 +12038,8 @@ function nlEmailHTML(c,opt){
     /* serialise as XML, not HTML: the same string also has to parse inside an SVG picture,
        where a bare <br> or <img> would stop the whole thing from drawing */
     const mark=new XMLSerializer().serializeToString(pg);
-    out='<div style="background:#f4f6fa;padding:12px 0;font-family:'+NLFONT+'">'
-      +'<div style="margin:0 auto;max-width:'+(WID+24)+'px">'+mark+'</div></div>';
+    out='<div style="background:#eef2f7;padding:20px 12px;font-family:'+NLFONT+'">'
+      +'<div style="margin:0 auto;max-width:'+(WID+28)+'px">'+mark+'</div></div>';
   }catch(e){ out=''; }
   f.remove();
   return out;
